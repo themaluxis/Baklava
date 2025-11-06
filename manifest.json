@@ -12,7 +12,7 @@
         "changelog": "Initial release with request management and search enhancements",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/j4ckgrey/jellyfin-plugin-baklava/releases/download/v0.1.0.0/Baklava_0.1.0.0.zip",
-        "checksum": "",
+        "checksum": "21c78ba2887f4d91a2d4e7fb7daad15aa22618f376ef24e79d0adb1267f0164a",
         "timestamp": "2025-11-06T00:00:00Z"
       }
     ]
