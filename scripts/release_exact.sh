@@ -39,6 +39,10 @@ if [ ! -d "$REPO_ROOT/publish" ]; then
   echo "ERROR: publish/ directory not found at $REPO_ROOT/publish" >&2
   exit 1
 fi
+echo "[release_exact] Sync repository Files/ -> publish/Files/ to ensure wwwroot is up-to-date"
+mkdir -p "$REPO_ROOT/publish/Files"
+rsync -a --delete "$REPO_ROOT/Files/" "$REPO_ROOT/publish/Files/"
+
 cd "$REPO_ROOT/publish"
 zip -r "$REPO_ROOT/$ZIPNAME" .
 cd "$REPO_ROOT"

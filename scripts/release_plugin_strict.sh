@@ -10,6 +10,10 @@ MANIFEST="$REPO_ROOT/manifest.json"
 echo "[release] Building project..."
 dotnet build -c Debug
 
+echo "[release] Sync repository Files/ -> publish/Files/ to ensure wwwroot is up-to-date"
+mkdir -p "$REPO_ROOT/publish/Files"
+rsync -a --delete "$REPO_ROOT/Files/" "$REPO_ROOT/publish/Files/"
+
 echo "[release] Creating zip from publish/..."
 cd "$REPO_ROOT/publish"
 zip -r "$REPO_ROOT/$ZIPNAME" .
