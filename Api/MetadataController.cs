@@ -383,7 +383,7 @@ namespace Baklava.Api
                         audioDtos.AddRange(probe.Audio.Select(a => new AudioStreamDto
                         {
                             Index = a.Index,
-                            Title = BuildDescriptiveAudioTitle(a),
+                            Title = a.Title ?? ($"Audio {a.Index}"),
                             Language = a.Language,
                             Codec = a.Codec,
                             Channels = a.Channels,
@@ -393,7 +393,7 @@ namespace Baklava.Api
                         subtitleDtos.AddRange(probe.Subtitles.Select(s => new SubtitleStreamDto
                         {
                             Index = s.Index,
-                            Title = BuildDescriptiveSubtitleTitle(s),
+                            Title = s.Title ?? ($"Subtitle {s.Index}"),
                             Language = s.Language,
                             Codec = s.Codec,
                             IsForced = s.IsForced,
@@ -433,40 +433,52 @@ namespace Baklava.Api
 
         private string BuildStreamTitle(MediaBrowser.Model.Entities.MediaStream stream)
         {
-            // If we have a meaningful title, use it with language/codec info
             var baseTitle = stream.DisplayTitle ?? stream.Title;
+            var language = stream.Language;
+            var codec = stream.Codec;
+
+            // If we have a meaningful title, try to parse language from it if not already set
             if (!string.IsNullOrEmpty(baseTitle) && baseTitle != $"{stream.Type} {stream.Index}")
             {
-                var title = baseTitle;
-                
-                if (!string.IsNullOrEmpty(stream.Language))
+                // Try to extract language from title if language property is not set or is undefined
+                if (string.IsNullOrEmpty(language) || language == "und" || language == "unknown")
                 {
-                    title += $" ({GetLanguageName(stream.Language)})";
+                    language = ExtractLanguageFromTitle(baseTitle);
                 }
-                
-                if (!string.IsNullOrEmpty(stream.Codec))
+
+                // Clean up the title by removing redundant language/codec info
+                var cleanTitle = CleanStreamTitle(baseTitle, language, codec);
+
+                // Add language if we have it and it's not already in the title
+                if (!string.IsNullOrEmpty(language) && !cleanTitle.Contains($"({language})", StringComparison.OrdinalIgnoreCase))
                 {
-                    title += $" [{stream.Codec.ToUpperInvariant()}]";
+                    cleanTitle += $" ({GetLanguageName(language)})";
                 }
-                
-                return title;
+
+                // Add codec if we have it and it's not already in the title
+                if (!string.IsNullOrEmpty(codec) && !cleanTitle.Contains($"[{codec.ToUpperInvariant()}]", StringComparison.OrdinalIgnoreCase))
+                {
+                    cleanTitle += $" [{codec.ToUpperInvariant()}]";
+                }
+
+                return cleanTitle;
             }
-            
-            // Build descriptive title for streams without good titles (common for remote streams)
+
+            // Fallback: build descriptive title for streams without good titles
             var parts = new List<string>();
-            
-            if (!string.IsNullOrEmpty(stream.Language))
+
+            if (!string.IsNullOrEmpty(language) && language != "und" && language != "unknown")
             {
-                parts.Add(GetLanguageName(stream.Language));
+                parts.Add(GetLanguageName(language));
             }
-            
+
             if (stream.Type == MediaBrowser.Model.Entities.MediaStreamType.Audio)
             {
-                if (!string.IsNullOrEmpty(stream.Codec))
+                if (!string.IsNullOrEmpty(codec))
                 {
-                    parts.Add(stream.Codec.ToUpperInvariant());
+                    parts.Add(codec.ToUpperInvariant());
                 }
-                
+
                 if (stream.Channels.HasValue)
                 {
                     parts.Add(GetChannelLayout(stream.Channels.Value));
@@ -474,11 +486,11 @@ namespace Baklava.Api
             }
             else if (stream.Type == MediaBrowser.Model.Entities.MediaStreamType.Subtitle)
             {
-                if (!string.IsNullOrEmpty(stream.Codec))
+                if (!string.IsNullOrEmpty(codec))
                 {
-                    parts.Add(stream.Codec.ToUpperInvariant());
+                    parts.Add(codec.ToUpperInvariant());
                 }
-                
+
                 var flags = new List<string>();
                 if (stream.IsForced) flags.Add("Forced");
                 if (stream.IsDefault) flags.Add("Default");
@@ -487,14 +499,8 @@ namespace Baklava.Api
                     parts.Add($"[{string.Join(", ", flags)}]");
                 }
             }
-            
-            // Fallback to type and index if no info
-            if (!parts.Any())
-            {
-                parts.Add($"{stream.Type} {stream.Index}");
-            }
-            
-            return string.Join(" ", parts);
+
+            return parts.Any() ? string.Join(" ", parts) : $"{stream.Type} {stream.Index}";
         }
 
         private static readonly Dictionary<string, string> LanguageMap = new(StringComparer.OrdinalIgnoreCase)
@@ -533,73 +539,6 @@ namespace Baklava.Api
             }
         }
 
-        private string BuildDescriptiveAudioTitle(FfprobeAudio audio)
-        {
-            if (!string.IsNullOrEmpty(audio.Title))
-            {
-                var title = audio.Title;
-                if (!string.IsNullOrEmpty(audio.Language))
-                {
-                    title += $" ({GetLanguageName(audio.Language)})";
-                }
-                if (!string.IsNullOrEmpty(audio.Codec))
-                {
-                    title += $" [{audio.Codec.ToUpperInvariant()}]";
-                }
-                return title;
-            }
-
-            var parts = new List<string>();
-            if (!string.IsNullOrEmpty(audio.Language))
-            {
-                parts.Add(GetLanguageName(audio.Language));
-            }
-            if (!string.IsNullOrEmpty(audio.Codec))
-            {
-                parts.Add(audio.Codec.ToUpperInvariant());
-            }
-            if (audio.Channels.HasValue)
-            {
-                parts.Add(GetChannelLayout(audio.Channels.Value));
-            }
-            return parts.Any() ? string.Join(" ", parts) : $"Audio {audio.Index}";
-        }
-
-        private string BuildDescriptiveSubtitleTitle(FfprobeSubtitle subtitle)
-        {
-            if (!string.IsNullOrEmpty(subtitle.Title))
-            {
-                var title = subtitle.Title;
-                if (!string.IsNullOrEmpty(subtitle.Language))
-                {
-                    title += $" ({GetLanguageName(subtitle.Language)})";
-                }
-                if (!string.IsNullOrEmpty(subtitle.Codec))
-                {
-                    title += $" [{subtitle.Codec.ToUpperInvariant()}]";
-                }
-                return title;
-            }
-
-            var parts = new List<string>();
-            if (!string.IsNullOrEmpty(subtitle.Language))
-            {
-                parts.Add(GetLanguageName(subtitle.Language));
-            }
-            if (!string.IsNullOrEmpty(subtitle.Codec))
-            {
-                parts.Add(subtitle.Codec.ToUpperInvariant());
-            }
-            var flags = new List<string>();
-            if (subtitle.IsForced) flags.Add("Forced");
-            if (subtitle.IsDefault) flags.Add("Default");
-            if (flags.Any())
-            {
-                parts.Add($"[{string.Join(", ", flags)}]");
-            }
-            return parts.Any() ? string.Join(" ", parts) : $"Subtitle {subtitle.Index}";
-        }
-
         private string GetChannelLayout(int channels)
         {
             return channels switch
@@ -616,6 +555,79 @@ namespace Baklava.Api
                 10 => "7.1.4",
                 _ => $"{channels}ch"
             };
+        }
+
+        private string ExtractLanguageFromTitle(string title)
+        {
+            if (string.IsNullOrEmpty(title)) return null;
+
+            // Look for language names in parentheses or brackets
+            var patterns = new[]
+            {
+                @"\(([A-Za-z]{2,3})\)",  // (eng), (English)
+                @"\[([A-Za-z]{2,3})\]",  // [eng], [English]
+                @"- ([A-Za-z]{2,3})",     // - eng, - English
+            };
+
+            foreach (var pattern in patterns)
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(title, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    var langCode = match.Groups[1].Value;
+                    // Check if it's a known language code or name
+                    if (LanguageMap.ContainsKey(langCode.ToLowerInvariant()) || langCode.Length >= 2)
+                    {
+                        return langCode.ToLowerInvariant();
+                    }
+                }
+            }
+
+            // Look for common language names
+            foreach (var kvp in LanguageMap)
+            {
+                if (title.Contains(kvp.Value, StringComparison.OrdinalIgnoreCase))
+                {
+                    return kvp.Key;
+                }
+            }
+
+            return null;
+        }
+
+        private string CleanStreamTitle(string title, string language, string codec)
+        {
+            if (string.IsNullOrEmpty(title)) return title;
+
+            var cleanTitle = title;
+
+            // Remove redundant language info
+            if (!string.IsNullOrEmpty(language))
+            {
+                var langName = GetLanguageName(language);
+                // Remove language in various formats
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\s*\(" + System.Text.RegularExpressions.Regex.Escape(language) + @"\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\s*\(" + System.Text.RegularExpressions.Regex.Escape(langName) + @"\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\s*\[" + System.Text.RegularExpressions.Regex.Escape(language) + @"\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\s*\[" + System.Text.RegularExpressions.Regex.Escape(langName) + @"\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                cleanTitle = cleanTitle.Replace(" - " + language, "", StringComparison.OrdinalIgnoreCase);
+                cleanTitle = cleanTitle.Replace(" - " + langName, "", StringComparison.OrdinalIgnoreCase);
+            }
+
+            // Remove redundant codec info
+            if (!string.IsNullOrEmpty(codec))
+            {
+                cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\s*\[" + System.Text.RegularExpressions.Regex.Escape(codec) + @"\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                cleanTitle = cleanTitle.Replace(" " + codec, "", StringComparison.OrdinalIgnoreCase);
+                cleanTitle = cleanTitle.Replace(" " + codec.ToUpperInvariant(), "", StringComparison.OrdinalIgnoreCase);
+                cleanTitle = cleanTitle.Replace(" " + codec.ToLowerInvariant(), "", StringComparison.OrdinalIgnoreCase);
+            }
+
+            // Clean up extra spaces and punctuation
+            cleanTitle = System.Text.RegularExpressions.Regex.Replace(cleanTitle, @"\s+", " ");
+            cleanTitle = cleanTitle.Trim().TrimEnd('-', ' ', '[', '(', ')', ']');
+
+            return string.IsNullOrEmpty(cleanTitle) ? title : cleanTitle;
         }
 
         #region Private Helpers
