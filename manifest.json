@@ -11,8 +11,8 @@
         "version": "0.1.0",
         "changelog": "Initial release with request management and search enhancements",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://github.com/j4ckgrey/jellyfin-plugin-baklava/releases/download/v0.1.0/Baklava_0.1.0.zip",
-        "checksum": "",
+  "sourceUrl": "https://github.com/j4ckgrey/jellyfin-plugin-baklava/releases/download/v0.1.0/Baklava_0.1.0.zip",
+  "checksum": "d4bcca4e9a900acf493bd0be211aeb5d21a056f8da098b9918b656ba63c08cc7",
         "timestamp": "2025-11-07T14:00:00Z"
       }
     ]
