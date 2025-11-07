@@ -251,6 +251,7 @@
     function createArrows(container) {
         const wrapper = container.parentElement;
         if (!wrapper || wrapper.querySelector('.emby-select-arrow')) return;
+        console.log('[SelectToCards] createArrows for container', container);
         
         const leftArrow = document.createElement('button');
         leftArrow.className = 'emby-select-arrow left';
@@ -683,6 +684,39 @@
             // Start checking
             setTimeout(checkAndPopulate, 50);
         });
+        
+        // Observe the form for changes (options added dynamically) and re-run initialization
+        try {
+            const formObserver = new MutationObserver(mutations => {
+                const form = document.querySelector('form.trackSelections');
+                if (!form) return;
+                // If any select still uninitialized, attempt to initialize selects again
+                const selects = form.querySelectorAll('select.detailTrackSelect');
+                for (const s of selects) {
+                    if (!s._embyCardsContainer) {
+                        console.log('[SelectToCards] Detected new select, re-running initSelects');
+                        initSelects();
+                        break;
+                    }
+                }
+            });
+            formObserver.observe(document.body, { childList: true, subtree: true });
+        } catch (e) { console.warn('[SelectToCards] form observer failed', e); }
+
+        // Periodic init attempts in case UI loads slowly or single-page navigation prevents MutationObserver from firing
+        try {
+            let attempts = 0;
+            const maxAttempts = 8;
+            const retryInterval = setInterval(() => {
+                const form = document.querySelector('form.trackSelections');
+                if (form && !form._selectToCardsInitialized) {
+                    console.log('[SelectToCards] Retry initSelects attempt', attempts + 1);
+                    initSelects();
+                }
+                attempts++;
+                if (attempts >= maxAttempts) clearInterval(retryInterval);
+            }, 1500);
+        } catch (e) { console.warn('[SelectToCards] retry init failed', e); }
         
         console.log('[SelectToCards] Initialization complete');
     }
