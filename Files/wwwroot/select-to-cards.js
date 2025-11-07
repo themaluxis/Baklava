@@ -113,20 +113,21 @@
 
         mediaSource.MediaStreams.forEach((stream) => {
             if (stream.Type === 'Audio') {
-                const lang = stream.Language ? ` (${stream.Language})` : '';
-                const codec = stream.Codec ? ` [${stream.Codec}]` : '';
+                // Prefer displaying the parsed language name only. If language is missing,
+                // fall back to the display/title or a generic label.
+                const langOnly = stream.Language || (stream.DisplayTitle || stream.Title) || `Audio ${stream.Index}`;
                 result.audio.push({
                     index: stream.Index,
-                    title: (stream.DisplayTitle || stream.Title || `Audio ${stream.Index}`) + lang + codec,
+                    // Title shown in option/cards will be the language-friendly string only
+                    title: String(langOnly),
                     language: stream.Language,
                     codec: stream.Codec
                 });
             } else if (stream.Type === 'Subtitle') {
-                const lang = stream.Language ? ` (${stream.Language})` : '';
-                const codec = stream.Codec ? ` [${stream.Codec}]` : '';
+                const langOnly = stream.Language || (stream.DisplayTitle || stream.Title) || `Subtitle ${stream.Index}`;
                 result.subs.push({
                     index: stream.Index,
-                    title: (stream.DisplayTitle || stream.Title || `Subtitle ${stream.Index}`) + lang + codec,
+                    title: String(langOnly),
                     language: stream.Language,
                     codec: stream.Codec
                 });
