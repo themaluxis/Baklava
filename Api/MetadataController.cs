@@ -352,8 +352,9 @@ namespace Baklava.Api
                 .Select(s => new AudioStreamDto
                 {
                     Index = s.Index,
+                    // Keep the title clean of language so the UI can show language separately
                     Title = BuildStreamTitle(s),
-                    Language = s.Language,
+                    Language = GetLanguageDisplayName(s.Language),
                     Codec = s.Codec,
                     Channels = s.Channels,
                     Bitrate = s.BitRate.HasValue ? (long?)s.BitRate.Value : null
@@ -366,7 +367,7 @@ namespace Baklava.Api
                 {
                     Index = s.Index,
                     Title = BuildStreamTitle(s),
-                    Language = s.Language,
+                    Language = GetLanguageDisplayName(s.Language),
                     Codec = s.Codec,
                     IsForced = s.IsForced,
                     IsDefault = s.IsDefault
@@ -384,7 +385,7 @@ namespace Baklava.Api
                         {
                             Index = a.Index,
                             Title = a.Title ?? ($"Audio {a.Index}"),
-                            Language = a.Language,
+                            Language = GetLanguageDisplayName(a.Language),
                             Codec = a.Codec,
                             Channels = a.Channels,
                             Bitrate = a.Bitrate
@@ -394,7 +395,7 @@ namespace Baklava.Api
                         {
                             Index = s.Index,
                             Title = s.Title ?? ($"Subtitle {s.Index}"),
-                            Language = s.Language,
+                            Language = GetLanguageDisplayName(s.Language),
                             Codec = s.Codec,
                             IsForced = s.IsForced,
                             IsDefault = s.IsDefault
@@ -433,19 +434,57 @@ namespace Baklava.Api
 
         private string BuildStreamTitle(MediaBrowser.Model.Entities.MediaStream stream)
         {
+            // Keep the stream title focused on display/title and codec only.
+            // Language is returned separately via the Language property so the UI
+            // can choose how/where to display it.
             var title = stream.DisplayTitle ?? stream.Title ?? $"{stream.Type} {stream.Index}";
-            
-            if (!string.IsNullOrEmpty(stream.Language))
-            {
-                title += $" ({stream.Language})";
-            }
             
             if (!string.IsNullOrEmpty(stream.Codec))
             {
                 title += $" [{stream.Codec.ToUpperInvariant()}]";
             }
-            
+
             return title;
+        }
+
+        private string? GetLanguageDisplayName(string? lang)
+        {
+            if (string.IsNullOrWhiteSpace(lang)) return null;
+
+            try
+            {
+                // Normalize and take primary part (e.g., en-US -> en)
+                var code = lang.Split(new[] { '-', '_' }, 2)[0];
+
+                // Try direct CultureInfo first
+                try
+                {
+                    var ci = new System.Globalization.CultureInfo(code);
+                    var name = ci.EnglishName;
+                    var parenIdx = name.IndexOf(" (");
+                    return parenIdx > 0 ? name.Substring(0, parenIdx) : name;
+                }
+                catch { }
+
+                // Fallback: scan known cultures for a match by two/three-letter codes or full name
+                var cultures = System.Globalization.CultureInfo.GetCultures(System.Globalization.CultureTypes.NeutralCultures | System.Globalization.CultureTypes.SpecificCultures);
+                foreach (var c in cultures)
+                {
+                    if (string.Equals(c.TwoLetterISOLanguageName, code, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(c.ThreeLetterISOLanguageName, code, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(c.ThreeLetterWindowsLanguageName, code, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(c.Name, code, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var name = c.EnglishName;
+                        var parenIdx = name.IndexOf(" (");
+                        return parenIdx > 0 ? name.Substring(0, parenIdx) : name;
+                    }
+                }
+            }
+            catch { }
+
+            // Last resort: return the original string (may already be a friendly name)
+            return lang;
         }
 
         #region Private Helpers
