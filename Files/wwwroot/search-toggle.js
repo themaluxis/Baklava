@@ -1,7 +1,6 @@
 (function () {
     'use strict';
 
-    console.log('[MyJellyfinPlugin] Search toggle script loading...');
 
     const SEARCH_STORAGE_KEY = 'jellyfin_local_search_enabled';
     const SEARCH_PREFIX = 'local:';
@@ -205,7 +204,6 @@
     // Initialize
     function init() {
         try {
-            console.log('[MyJellyfinPlugin] init() called');
             injectSearchToggleCSS();
             interceptSearchAPI();
             attachGlobe();
@@ -217,7 +215,6 @@
                 }
             });
             obs.observe(document.documentElement, { childList: true, subtree: true });
-            console.log('[MyJellyfinPlugin] init() completed successfully');
         } catch (error) {
             console.error('[MyJellyfinPlugin] ERROR in init():', error);
         }
@@ -227,5 +224,4 @@
         document.addEventListener('DOMContentLoaded', init);
     else init();
     
-    console.log('[MyJellyfinPlugin] Search toggle script loaded');
 })();

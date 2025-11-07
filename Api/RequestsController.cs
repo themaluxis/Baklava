@@ -2,13 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
+using System.Net.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
 namespace Baklava.Api
 {
     [ApiController]
-    [Route("api/baklava/requests")]
+    [Route("api/myplugin/requests")]
     [Produces("application/json")]
     public class RequestsController : ControllerBase
     {
@@ -57,6 +58,64 @@ namespace Baklava.Api
             if (string.IsNullOrEmpty(request.Id))
             {
                 request.Id = $"{request.Username}_{request.TmdbId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            }
+
+            // Normalize and ensure media type fields are set
+            request.ItemType = (request.ItemType ?? string.Empty).ToLowerInvariant();
+            if (string.IsNullOrEmpty(request.TmdbMediaType))
+            {
+                request.TmdbMediaType = request.ItemType == "series" ? "tv" : "movie";
+            }
+
+            // Server-side validation: if we have an IMDB id, prefer TMDB's tv_results mapping
+            // This avoids saving a movie tmdbId when the IMDB maps to a TV show.
+            try
+            {
+                if (!string.IsNullOrEmpty(request.ImdbId))
+                {
+                    var cfg = Plugin.Instance?.Configuration;
+                    var apiKey = cfg?.TmdbApiKey;
+                    if (!string.IsNullOrEmpty(apiKey))
+                    {
+                        var tmdbFindUrl = $"https://api.themoviedb.org/3/find/{Uri.EscapeDataString(request.ImdbId)}?api_key={Uri.EscapeDataString(apiKey)}&external_source=imdb_id";
+                        using (var http = new HttpClient())
+                        {
+                            var resp = http.GetAsync(tmdbFindUrl).GetAwaiter().GetResult();
+                            if (resp.IsSuccessStatusCode)
+                            {
+                                var content = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                                using (var doc = System.Text.Json.JsonDocument.Parse(content))
+                                {
+                                    var root = doc.RootElement;
+                                    if (root.TryGetProperty("tv_results", out var tvResults) && tvResults.GetArrayLength() > 0)
+                                    {
+                                        var first = tvResults[0];
+                                        if (first.TryGetProperty("id", out var idProp))
+                                        {
+                                            request.TmdbId = idProp.GetRawText().Trim('"');
+                                            request.TmdbMediaType = "tv";
+                                            request.ItemType = "series";
+                                        }
+                                    }
+                                    else if (root.TryGetProperty("movie_results", out var movieResults) && movieResults.GetArrayLength() > 0)
+                                    {
+                                        var first = movieResults[0];
+                                        if (first.TryGetProperty("id", out var idProp))
+                                        {
+                                            request.TmdbId = idProp.GetRawText().Trim('"');
+                                            request.TmdbMediaType = "movie";
+                                            request.ItemType = "movie";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[RequestsController] TMDB find check failed for imdbId={ImdbId}", request.ImdbId);
             }
 
             // Set default status
@@ -170,8 +229,14 @@ namespace Baklava.Api
         [JsonPropertyName("tmdbId")]
         public string TmdbId { get; set; }
 
+        [JsonPropertyName("jellyfinId")]
+        public string JellyfinId { get; set; }
+
         [JsonPropertyName("itemType")]
         public string ItemType { get; set; }
+
+    [JsonPropertyName("tmdbMediaType")]
+    public string TmdbMediaType { get; set; }
 
         [JsonPropertyName("status")]
         public string Status { get; set; }

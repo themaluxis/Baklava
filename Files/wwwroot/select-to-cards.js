@@ -1,21 +1,146 @@
+/**
+ * Select to Cards - Standalone
+ * Converts playback version/audio/subtitle dropdowns to card carousels
+ * All utilities inlined - no dependencies on shared-utils.js
+ */
 (function () {
     'use strict';
     
-    function init() {
-        const UI = window.MediaServerUI;
-        if (!UI) {
-            console.warn('[SelectToCards] MediaServerUI not ready, retrying in 100ms');
-            setTimeout(init, 100);
-            return;
+    console.log('[SelectToCards] Loading standalone version...');
+
+    // ============================================
+    // UTILITY FUNCTIONS (Inlined)
+    // ============================================
+
+    function throttle(func, limit = 300) {
+        let lastCall = 0;
+        return function(...args) {
+            const now = Date.now();
+            if (now - lastCall >= limit) {
+                lastCall = now;
+                func(...args);
+            }
+        };
+    }
+
+    function emitEvent(element, eventName, bubbles = true) {
+        try {
+            const event = new Event(eventName, { bubbles });
+            element.dispatchEvent(event);
+        } catch (e) {
+            const event = document.createEvent('HTMLEvents');
+            event.initEvent(eventName, bubbles, false);
+            element.dispatchEvent(event);
         }
+    }
+
+    async function probeItemStreams(itemId, mediaSourceId) {
+        console.log('[SelectToCards.probeItemStreams] Called with itemId:', itemId, 'mediaSourceId:', mediaSourceId);
         
-        console.log('[SelectToCards] Initializing...');
+        if (!itemId) {
+            console.warn('[SelectToCards.probeItemStreams] No itemId');
+            return null;
+        }
 
-    // ========================================
-    // Select to Cards Converter
-    // ========================================
+        try {
+            if (!window.ApiClient) {
+                console.warn('[SelectToCards.probeItemStreams] No ApiClient');
+                return null;
+            }
+            
+            const params = new URLSearchParams();
+            params.append('itemId', itemId);
+            if (mediaSourceId) params.append('mediaSourceId', mediaSourceId);
 
-    // Monitor select values to prevent overriding user choices
+            const url = window.ApiClient.getUrl('api/myplugin/metadata/streams') + '?' + params.toString();
+            console.log('[SelectToCards.probeItemStreams] Fetching URL:', url);
+            
+            const response = await window.ApiClient.ajax({
+                type: 'GET',
+                url: url,
+                dataType: 'json'
+            });
+
+            console.log('[SelectToCards.probeItemStreams] Backend response:', response);
+
+            if (response) {
+                const result = {
+                    Id: response.mediaSourceId,
+                    MediaStreams: [
+                        ...response.audio.map(a => ({
+                            Type: 'Audio',
+                            Index: a.index,
+                            DisplayTitle: a.title,
+                            Title: a.title,
+                            Language: a.language,
+                            Codec: a.codec,
+                            Channels: a.channels,
+                            BitRate: a.bitrate
+                        })),
+                        ...response.subs.map(s => ({
+                            Type: 'Subtitle',
+                            Index: s.index,
+                            DisplayTitle: s.title,
+                            Title: s.title,
+                            Language: s.language,
+                            Codec: s.codec,
+                            IsForced: s.isForced,
+                            IsDefault: s.isDefault
+                        }))
+                    ]
+                };
+                console.log('[SelectToCards.probeItemStreams] Returning formatted result:', result);
+                return result;
+            }
+
+            console.warn('[SelectToCards.probeItemStreams] No response from backend');
+            return null;
+        } catch (err) {
+            console.error('[SelectToCards.probeItemStreams] Error:', err);
+            return null;
+        }
+    }
+
+    function extractStreams(mediaSource) {
+        const result = { audio: [], subs: [] };
+
+        if (!mediaSource?.MediaStreams?.length) {
+            console.warn('[SelectToCards.extractStreams] No MediaStreams in source:', mediaSource);
+            return result;
+        }
+
+        console.log('[SelectToCards.extractStreams] Processing', mediaSource.MediaStreams.length, 'streams');
+
+        mediaSource.MediaStreams.forEach((stream) => {
+            if (stream.Type === 'Audio') {
+                const lang = stream.Language ? ` (${stream.Language})` : '';
+                const codec = stream.Codec ? ` [${stream.Codec}]` : '';
+                result.audio.push({
+                    index: stream.Index,
+                    title: (stream.DisplayTitle || stream.Title || `Audio ${stream.Index}`) + lang + codec,
+                    language: stream.Language,
+                    codec: stream.Codec
+                });
+            } else if (stream.Type === 'Subtitle') {
+                const lang = stream.Language ? ` (${stream.Language})` : '';
+                const codec = stream.Codec ? ` [${stream.Codec}]` : '';
+                result.subs.push({
+                    index: stream.Index,
+                    title: (stream.DisplayTitle || stream.Title || `Subtitle ${stream.Index}`) + lang + codec,
+                    language: stream.Language,
+                    codec: stream.Codec
+                });
+            }
+        });
+
+        console.log('[SelectToCards.extractStreams] Extracted', result.audio.length, 'audio and', result.subs.length, 'subtitle streams');
+        return result;
+    }
+
+    // ============================================
+    // SELECT MONITORING
+    // ============================================
+
     function monitorSelectAccess(select) {
         if (select._monitored) return;
         select._monitored = true;
@@ -50,8 +175,10 @@
         });
     }
 
+    // ============================================
+    // UI STYLING
+    // ============================================
 
-    // Inject CSS for card UI
     function ensureStyle() {
         if (document.getElementById('emby-select-cards-style')) return;
         const style = document.createElement('style');
@@ -67,20 +194,21 @@
             }
             .emby-select-cards::-webkit-scrollbar { display: none !important; }
             
-            .emby-select-wrapper { position: relative !important; padding: 0 60px !important; }
+            .emby-select-wrapper { position: relative !important; padding: 0 45px !important; }
             
             .emby-select-arrow {
                 position: absolute !important; top: 50% !important; transform: translateY(-50%) !important;
-                width: 40px !important; height: 40px !important; background: rgba(0,0,0,0.6) !important;
-                border: 1px solid rgba(255,255,255,0.3) !important; border-radius: 50% !important;
-                color: #fff !important; font-size: 20px !important; cursor: pointer !important;
+                width: 50px !important; height: 50px !important; background: rgba(30,144,255,0.85) !important;
+                border: none !important; border-radius: 50% !important;
+                color: #fff !important; font-size: 28px !important; font-weight: bold !important; cursor: pointer !important;
                 transition: all 0.2s ease !important; z-index: 10 !important; display: flex !important;
                 align-items: center !important; justify-content: center !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
             }
-            .emby-select-arrow:hover { background: rgba(0,0,0,0.8) !important; transform: translateY(-50%) scale(1.1) !important; }
-            .emby-select-arrow:active { transform: translateY(-50%) scale(0.95) !important; }
-            .emby-select-arrow.left { left: 10px !important; }
-            .emby-select-arrow.right { right: 10px !important; }
+            .emby-select-arrow:hover { background: rgba(30,144,255,1) !important; transform: translateY(-50%) scale(1.15) !important; box-shadow: 0 6px 16px rgba(0,0,0,0.5) !important; }
+            .emby-select-arrow:active { transform: translateY(-50%) scale(1.0) !important; }
+            .emby-select-arrow.left { left: -15px !important; }
+            .emby-select-arrow.right { right: -15px !important; }
             .emby-select-arrow:disabled { opacity: 0.3 !important; cursor: not-allowed !important; }
             
             .carousel-label {
@@ -119,6 +247,9 @@
         document.head.appendChild(style);
     }
 
+    // ============================================
+    // UI CONTROLS
+    // ============================================
 
     function createArrows(container) {
         const wrapper = container.parentElement;
@@ -141,7 +272,7 @@
             rightArrow.disabled = container.scrollLeft >= container.scrollWidth - container.offsetWidth - 1;
         };
         
-        container.addEventListener('scroll', UI.throttle(updateArrows, 100));
+        container.addEventListener('scroll', throttle(updateArrows, 100));
         updateArrows();
         
         wrapper.appendChild(leftArrow);
@@ -175,7 +306,7 @@
             paginationContainer.appendChild(dot);
         }
         
-        container.addEventListener('scroll', UI.throttle(() => {
+        container.addEventListener('scroll', throttle(() => {
             const cardWidth = cards[0].offsetWidth + 8;
             const currentPage = Math.round(container.scrollLeft / (cardsPerPage * cardWidth));
             paginationContainer.querySelectorAll('.emby-select-pagination-dot').forEach((d, idx) => {
@@ -185,7 +316,6 @@
         
         wrapper.appendChild(paginationContainer);
     }
-
 
     function updateFormatterDisplay(select, optionValue) {
         const form = select.closest('form.trackSelections');
@@ -209,12 +339,9 @@
         }
     }
 
-
-    function getSelectClass(select) {
-        if (select.classList.contains('selectSource')) return 'selectSource';
-        if (select.classList.contains('selectAudio')) return 'selectAudio';
-        return 'selectSubtitles';
-    }
+    // ============================================
+    // CARD CREATION
+    // ============================================
 
     function createDummyCard(cardType) {
         const card = document.createElement('div');
@@ -264,31 +391,29 @@
         return card;
     }
 
+    // ============================================
+    // CARD POPULATION
+    // ============================================
 
     function populateCards(select) {
         const container = select._embyCardsContainer;
         if (!container || select.options.length === 0) return;
 
-        // Mark as populated to prevent duplicates
         if (select._cardsPopulated) return;
         select._cardsPopulated = true;
 
-        // Clear ALL existing cards (including placeholders and duplicates)
         container.innerHTML = '';
 
-        // Add real cards
         Array.from(select.options).forEach(option => {
             container.appendChild(createCard(option, select, container));
         });
 
-        // Remove old pagination and arrows before creating new ones
         const wrapper = container.parentElement;
         if (wrapper) {
             wrapper.querySelectorAll('.emby-select-arrow').forEach(arrow => arrow.remove());
             wrapper.querySelectorAll('.emby-select-pagination').forEach(pag => pag.remove());
         }
 
-        // Setup controls
         setTimeout(() => {
             createArrows(container);
             createPagination(container);
@@ -299,15 +424,21 @@
             
             // Auto-trigger selection for the first version to load audio/subtitle
             if (select.classList.contains('selectSource') && selectedCard) {
+                console.log('[SelectToCards] Auto-triggering stream fetch for first version');
                 setTimeout(() => {
                     handleSelection(select, selectedCard.dataset.value);
-                }, 100);
+                }, 200);
             }
         }, 0);
     }
 
+    // ============================================
+    // SELECTION HANDLING
+    // ============================================
 
     function handleSelection(select, value) {
+        console.log('[SelectToCards.handleSelection] Called for', select.className, 'with value:', value);
+        
         select._isUserAction = true;
         Array.from(select.options).forEach(o => o.selected = o.value === value);
         select._isUserAction = false;
@@ -322,13 +453,12 @@
                 setTimeout(async () => {
                     const form = select.closest('form.trackSelections');
                     if (form) {
-                        // Clear options from audio/subtitle selects (not the carousels!)
+                        console.log('[SelectToCards] Clearing audio/subtitle selects and fetching streams...');
+                        
+                        // Clear options from audio/subtitle selects
                         form.querySelectorAll('select.detailTrackSelect:not(.selectSource)').forEach(s => {
-                            // Clear the select options
                             s.innerHTML = '';
-                            // Reset populated flag so it can be populated again
                             s._cardsPopulated = false;
-                            // Reset carousel to dummy card
                             if (s._embyCardsContainer) {
                                 const cardType = s.classList.contains('selectAudio') ? 'audio-card' : 'subtitle-card';
                                 s._embyCardsContainer.innerHTML = '';
@@ -337,21 +467,63 @@
                         });
 
                         // Probe streams for selected media source
-                        if (UI?.probeItemStreams && value) {
+                        if (value) {
                             try {
                                 let itemId = null;
+                                
+                                // Try multiple sources to find itemId
                                 const itemInput = form.querySelector('[name*="itemId"], [name*="Id"]');
                                 if (itemInput) itemId = itemInput.value;
+                                
+                                if (!itemId && window.__currentPlaybackItemId) itemId = window.__currentPlaybackItemId;
                                 if (!itemId && window.__itemId) itemId = window.__itemId;
                                 if (!itemId && window.__mediaInfo) itemId = window.__mediaInfo.Id;
-                                if (!itemId) itemId = value;
                                 
-                                const mediaSource = await UI.probeItemStreams(itemId, value);
-                                if (mediaSource && UI.extractStreams) {
-                                    const { audio, subs } = UI.extractStreams(mediaSource);
+                                // Try to get from the select element's options
+                                if (!itemId) {
+                                    const selectedOption = select.options[select.selectedIndex];
+                                    if (selectedOption && selectedOption.getAttribute('data-id')) {
+                                        itemId = selectedOption.getAttribute('data-id');
+                                    }
+                                }
+                                
+                                // Try to extract from the value itself (mediaSourceId often contains itemId)
+                                if (!itemId && value) {
+                                    // Check if value looks like a GUID
+                                    if (value.match(/^[a-f0-9]{32}$/i)) {
+                                        itemId = value;
+                                    }
+                                }
+                                
+                                // Last resort: try to find from DOM context
+                                if (!itemId) {
+                                    const playbackManager = form.closest('[data-itemid]');
+                                    if (playbackManager) itemId = playbackManager.getAttribute('data-itemid');
+                                }
+                                
+                                console.log('[SelectToCards] Detected itemId:', itemId, 'mediaSourceId:', value);
+                                
+                                if (!itemId) {
+                                    console.error('[SelectToCards] Could not determine itemId!');
+                                    console.log('[SelectToCards] Available context:', {
+                                        formInputs: Array.from(form.querySelectorAll('input, select')).map(i => ({name: i.name, value: i.value?.substring(0, 50)})),
+                                        windowVars: { __itemId: window.__itemId, __mediaInfo: window.__mediaInfo }
+                                    });
+                                    return;
+                                }
+                                
+                                console.log('[SelectToCards] Probing streams for itemId:', itemId, 'mediaSourceId:', value);
+                                const mediaSource = await probeItemStreams(itemId, value);
+                                
+                                if (mediaSource) {
+                                    console.log('[SelectToCards] Got mediaSource, extracting streams...');
+                                    const { audio, subs } = extractStreams(mediaSource);
+                                    
+                                    console.log('[SelectToCards] Extracted', audio.length, 'audio and', subs.length, 'subtitle tracks');
                                     
                                     const audioSel = form.querySelector('select.selectAudio');
                                     if (audioSel && audio.length > 0) {
+                                        console.log('[SelectToCards] Populating', audio.length, 'audio tracks');
                                         audio.forEach(t => {
                                             const opt = document.createElement('option');
                                             opt.value = String(t.index);
@@ -360,10 +532,13 @@
                                         });
                                         audioSel.disabled = false;
                                         populateCards(audioSel);
+                                    } else {
+                                        console.warn('[SelectToCards] No audio tracks found');
                                     }
                                     
                                     const subSel = form.querySelector('select.selectSubtitles');
                                     if (subSel && subs.length > 0) {
+                                        console.log('[SelectToCards] Populating', subs.length, 'subtitle tracks');
                                         subs.forEach(t => {
                                             const opt = document.createElement('option');
                                             opt.value = String(t.index);
@@ -372,10 +547,14 @@
                                         });
                                         subSel.disabled = false;
                                         populateCards(subSel);
+                                    } else {
+                                        console.warn('[SelectToCards] No subtitle tracks found');
                                     }
+                                } else {
+                                    console.error('[SelectToCards] Failed to get mediaSource');
                                 }
                             } catch (err) {
-                                console.error('[handleSelection]', err);
+                                console.error('[SelectToCards.handleSelection] Error:', err);
                             }
                         }
                     }
@@ -383,104 +562,173 @@
             }
         }
         
-        UI.emitEvent(select, 'input');
-        UI.emitEvent(select, 'change');
+        emitEvent(select, 'input');
+        emitEvent(select, 'change');
     }
 
-
+    // ============================================
+    // INITIALIZATION
+    // ============================================
 
     function initSelects() {
         const form = document.querySelector('form.trackSelections');
-        if (!form || form.dataset.carouselsBuilt === 'true') return;
+        if (!form || form._selectToCardsInitialized) return;
         
-        ensureStyle();
-        form.dataset.carouselsBuilt = 'true';
+        form._selectToCardsInitialized = true;
+        console.log('[SelectToCards] Initializing track selections form');
         
-        // Hide original selects
-        form.querySelectorAll('.selectContainer').forEach(c => c.style.display = 'none');
+        // DIAGNOSTIC: Log all select elements
+        const allSelects = form.querySelectorAll('select');
+        console.log('[SelectToCards] Found', allSelects.length, 'select elements:');
+        allSelects.forEach((sel, idx) => {
+            console.log(`  [${idx}] classes:`, sel.className, 'options:', sel.options.length, 'disabled:', sel.disabled);
+        });
         
-        // Build formatter display
-        const formatterDiv = document.createElement('div');
-        formatterDiv.className = 'formatter-display';
-        formatterDiv.textContent = 'Loading format information...';
-        form.appendChild(formatterDiv);
+        // Try to capture itemId from form context
+        try {
+            // Method 1: Check for hidden inputs
+            const itemIdInput = form.querySelector('input[name*="itemId"], input[name*="Id"], input[type="hidden"]');
+            if (itemIdInput?.value) {
+                window.__currentPlaybackItemId = itemIdInput.value;
+                console.log('[SelectToCards] Captured itemId from input:', itemIdInput.value);
+            }
+            
+            // Method 2: Check data attributes on form or parent
+            const itemIdAttr = form.getAttribute('data-itemid') || form.closest('[data-itemid]')?.getAttribute('data-itemid');
+            if (itemIdAttr && !window.__currentPlaybackItemId) {
+                window.__currentPlaybackItemId = itemIdAttr;
+                console.log('[SelectToCards] Captured itemId from attribute:', itemIdAttr);
+            }
+            
+            // Method 3: Extract from URL or recent API calls
+            // Check if there was a recent Items/ API call we can parse
+            if (!window.__currentPlaybackItemId) {
+                // Try to get from the most recent Jellyfin request
+                const urlMatch = document.location.href.match(/[?&]id=([a-f0-9]+)/i);
+                if (urlMatch) {
+                    window.__currentPlaybackItemId = urlMatch[1];
+                    console.log('[SelectToCards] Captured itemId from URL:', urlMatch[1]);
+                }
+            }
+            
+            // Check all form inputs for debugging
+            const allInputs = form.querySelectorAll('input');
+            console.log('[SelectToCards] All form inputs:', Array.from(allInputs).map(i => ({name: i.name, value: i.value?.substring(0, 50)})));
+        } catch (e) {
+            console.warn('[SelectToCards] Could not capture itemId:', e);
+        }
         
-        // Build all 3 carousels with dummy placeholders
-        ['selectSource', 'selectAudio', 'selectSubtitles'].forEach(className => {
-            const labelText = className === 'selectSource' ? 'Version' : className === 'selectAudio' ? 'Audio' : 'Subtitles';
-            const cardType = className === 'selectAudio' ? 'audio-card' : className === 'selectSubtitles' ? 'subtitle-card' : '';
+        form.querySelectorAll('.selectContainer').forEach(c => c.style.display = 'none');        const selects = form.querySelectorAll('select.detailTrackSelect');
+        console.log('[SelectToCards] Processing', selects.length, 'select elements');
+        
+        selects.forEach((select, idx) => {
+            // Skip selectVideo - we don't want a Video Quality carousel
+            if (select.classList.contains('selectVideo')) {
+                console.log('[SelectToCards] Skipping selectVideo carousel');
+                return;
+            }
+            
+            monitorSelectAccess(select);
+            
+            // Determine label based on class
+            let label = 'Unknown';
+            if (select.classList.contains('selectSource')) label = 'Version';
+            else if (select.classList.contains('selectVideo')) label = 'Video Quality';
+            else if (select.classList.contains('selectAudio')) label = 'Audio';
+            else if (select.classList.contains('selectSubtitles')) label = 'Subtitles';
+            
+            // Try to get label from previous sibling if it exists
+            if (select.previousElementSibling?.textContent) {
+                label = select.previousElementSibling.textContent;
+            }
+            
+            console.log(`[SelectToCards] [${idx}] Creating carousel for:`, label, 'class:', select.className);
+            
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'carousel-label';
+            labelDiv.textContent = label;
             
             const wrapper = document.createElement('div');
             wrapper.className = 'emby-select-wrapper';
-            wrapper.dataset.select = className;
             
-            const label = document.createElement('div');
-            label.className = 'carousel-label';
-            label.textContent = labelText;
-            wrapper.appendChild(label);
+            const cardsContainer = document.createElement('div');
+            cardsContainer.className = 'emby-select-cards';
+            cardsContainer.setAttribute('role', 'listbox');
+            cardsContainer.setAttribute('aria-label', label);
             
-            const container = document.createElement('div');
-            container.className = 'emby-select-cards scrollSlider focuscontainer-x itemsContainer animatedScrollX';
-            container.dataset.for = className;
-            container.appendChild(createDummyCard(cardType));
-            wrapper.appendChild(container);
-            form.appendChild(wrapper);
+            wrapper.appendChild(cardsContainer);
+            select._embyCardsContainer = cardsContainer;
+            
+            const parent = select.closest('.selectContainer')?.parentElement || form;
+            parent.appendChild(labelDiv);
+            parent.appendChild(wrapper);
+            
+            // Wait for options to be populated, then create cards
+            // Jellyfin populates the selects asynchronously
+            const checkAndPopulate = () => {
+                if (select.options.length > 0) {
+                    console.log(`[SelectToCards] Options populated for ${label}:`, select.options.length);
+                    if (select.classList.contains('selectSource') || select.classList.contains('selectVideo')) {
+                        populateCards(select);
+                    } else {
+                        // Audio/Subtitle start with dummy cards until version is selected
+                        const cardType = select.classList.contains('selectAudio') ? 'audio-card' : 'subtitle-card';
+                        cardsContainer.appendChild(createDummyCard(cardType));
+                    }
+                } else {
+                    // Not populated yet, check again soon
+                    setTimeout(checkAndPopulate, 100);
+                }
+            };
+            
+            // Start checking
+            setTimeout(checkAndPopulate, 50);
         });
-    }
-
-    // Watch for selects with options and populate carousels
-    setInterval(() => {
-        const form = document.querySelector('form.trackSelections');
-        if (!form) return;
         
-        form.querySelectorAll('select.detailTrackSelect').forEach(select => {
-            if (select.classList.contains('selectVideo')) return;
-            
-            const selectClass = getSelectClass(select);
-            const carousel = form.querySelector(`.emby-select-cards[data-for="${selectClass}"]`);
-            if (!carousel) return;
-            
-            if (!select._embyCardsContainer) {
-                select._embyCardsContainer = carousel;
-                monitorSelectAccess(select);
-            }
-            
-            if (select.options.length > 0 && !select._cardsPopulated) {
-                populateCards(select);
-            }
-        });
-    }, 100);
+        console.log('[SelectToCards] Initialization complete');
+    }
 
-    // Initialize on page load
-    initSelects();
-    
-    // Watch for form appearing
-    const observer = new MutationObserver(() => {
-        initSelects();
+    // Start monitoring for playback UI
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === 1) {
+                    if (node.matches && node.matches('form.trackSelections')) {
+                        initSelects();
+                    } else if (node.querySelector) {
+                        const form = node.querySelector('form.trackSelections');
+                        if (form) initSelects();
+                    }
+                }
+            }
+        }
     });
+
     observer.observe(document.body, { childList: true, subtree: true });
-
-    // Listen for page navigation (when titles are clicked)
-    window.addEventListener('viewshow', () => {
-        setTimeout(initSelects, 0);
-        setTimeout(initSelects, 50);
-        setTimeout(initSelects, 100);
-        setTimeout(initSelects, 200);
-    });
-
-    // Listen for hashchange (backup)
-    window.addEventListener('hashchange', () => {
-        setTimeout(initSelects, 0);
-        setTimeout(initSelects, 50);
-        setTimeout(initSelects, 100);
-    });
+    
+    // CRITICAL: Hook into ApiClient to capture the itemId from API calls
+    if (window.ApiClient && window.ApiClient.ajax) {
+        const originalAjax = window.ApiClient.ajax;
+        window.ApiClient.ajax = function(options) {
+            // Check if this is an Items request that might have the itemId
+            if (options.url && options.url.includes('/Items/')) {
+                const match = options.url.match(/\/Items\/([a-f0-9-]+)/i);
+                if (match && match[1]) {
+                    const extractedId = match[1].replace(/-/g, '');
+                    if (extractedId.length === 32) {
+                        window.__currentPlaybackItemId = extractedId;
+                        console.log('[SelectToCards] Intercepted itemId from API call:', extractedId);
+                    }
+                }
+            }
+            return originalAjax.apply(this, arguments);
+        };
     }
     
-    // Start initialization with retry logic
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    // Check if form already exists
+    if (document.querySelector('form.trackSelections')) {
+        initSelects();
     }
-})();
 
+    console.log('[SelectToCards] Standalone version loaded');
+})();

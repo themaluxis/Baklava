@@ -1,17 +1,91 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Baklava</title>
+    <meta charset="utf-8">
+    <title>Baklava - Media Request Manager</title>
 </head>
 <body>
-    <div data-role="page" class="page type-interior pluginConfigurationPage">
+    <div id="BaklavaConfigPage" data-role="page" class="page type-interior pluginConfigurationPage">
         <div data-role="content">
             <div class="content-primary">
-                <h2>Baklava - Media Request Plugin</h2>
-                <p>This plugin adds media request management with admin approval workflow.</p>
-                <p>Requests are managed through the Jellyfin interface. No configuration needed here.</p>
+                <h2>Baklava - Media Request Manager</h2>
+                <h3>Plugin Settings</h3>
+                <div>
+                    <label for="tmdbApiKey" style="display:block;margin-bottom:6px;color:#ddd;font-weight:600;">TMDB API Key (required for title search)</label>
+                    <input id="tmdbApiKey" type="text" placeholder="Enter TMDB API Key" style="width:420px;padding:6px;border-radius:4px;border:1px solid #444;background:#111;color:#fff;">
+                    <button id="saveConfigBtn" style="margin-left:8px;padding:6px 10px;border-radius:4px;border:none;background:#1e90ff;color:#fff;cursor:pointer;">Save</button>
+                    <div id="configStatus" style="margin-top:8px;color:#ccc;font-size:13px;"></div>
+                </div>
+
+                <script>
+                    async function loadConfig(){
+                        try{
+                            if (window.ApiClient && window.ApiClient.ajax) {
+                                let response = await window.ApiClient.ajax({ type: 'GET', url: window.ApiClient.getUrl('api/myplugin/config'), dataType: 'json' });
+                                if (response && response.constructor && response.constructor.name === 'Response') response = await response.json();
+                                document.getElementById('tmdbApiKey').value = response?.tmdbApiKey || '';
+                                return;
+                            }
+
+                            const url = (window.ApiClient && window.ApiClient.getUrl) ? window.ApiClient.getUrl('api/myplugin/config') : (window.location.origin + '/api/myplugin/config');
+                            const res = await fetch(url, { credentials: 'same-origin' });
+                            if (!res.ok) throw new Error('Failed to load config');
+                            const json = await res.json();
+                            document.getElementById('tmdbApiKey').value = json.tmdbApiKey || '';
+                        }catch(e){ console.error(e); }
+                    }
+
+                    document.getElementById('saveConfigBtn').addEventListener('click', async ()=>{
+                        const key = document.getElementById('tmdbApiKey').value;
+                        try {
+                            // Prefer ApiClient.ajax which includes authentication and proper headers
+                            if (window.ApiClient && window.ApiClient.ajax) {
+                                const ajaxOpts = {
+                                    type: 'PUT',
+                                    url: window.ApiClient.getUrl('api/myplugin/config'),
+                                    data: JSON.stringify({ tmdbApiKey: key }),
+                                    contentType: 'application/json'
+                                };
+                                const res = await window.ApiClient.ajax(ajaxOpts);
+                                // Some ApiClient implementations return Response-like objects
+                                if (res && res.status === 403) {
+                                    document.getElementById('configStatus').textContent = 'Forbidden: admin only';
+                                    return;
+                                }
+                                // Update cached plugin config in page context so client code picks it up immediately
+                                try { if (window.MediaServerUI) window.MediaServerUI._pluginConfig = { tmdbApiKey: key }; } catch(e) {}
+                                document.getElementById('configStatus').textContent = 'Saved';
+                                return;
+                            }
+
+                            const url = (window.ApiClient && window.ApiClient.getUrl) ? window.ApiClient.getUrl('api/myplugin/config') : (window.location.origin + '/api/myplugin/config');
+                            const res = await fetch(url, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tmdbApiKey: key }),
+                                credentials: 'same-origin'
+                            });
+                            if (res.status === 403) {
+                                document.getElementById('configStatus').textContent = 'Forbidden: admin only';
+                                return;
+                            }
+                            if (!res.ok) throw new Error('Save failed');
+                            try { if (window.MediaServerUI) window.MediaServerUI._pluginConfig = { tmdbApiKey: key }; } catch(e) {}
+                            document.getElementById('configStatus').textContent = 'Saved';
+                        } catch (err) {
+                            document.getElementById('configStatus').textContent = 'Error saving';
+                            console.error(err);
+                        }
+                    });
+
+                    loadConfig();
+                </script>
             </div>
         </div>
     </div>
+
+    <script type="text/javascript">
+        console.log('[Baklava] Configuration page loaded');
+    </script>
 </body>
 </html>

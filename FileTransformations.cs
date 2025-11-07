@@ -12,21 +12,22 @@ namespace Baklava
     public static class FileTransformations
     {
         private const string InjectionMarker = "<!-- MyJellyfinPlugin Injected -->";
-        // Folder name used under the Jellyfin plugins directory. We include the
-        // version here to match how plugins are typically installed, e.g.
-        // MyJellyfinPlugin_0.1.0.0
-        private const string PluginFolderName = "MyJellyfinPlugin_0.1.0.0";
+    // Folder name used under the Jellyfin plugins directory.
+    // Use the assembly name at runtime so fallback static references
+    // match the actual folder the plugin is installed to (e.g. "Baklava").
+    private static readonly string PluginFolderName = Assembly.GetExecutingAssembly().GetName().Name ?? "Baklava";
 
-        // JavaScript files to inject, IN ORDER (dependencies first)
+        // JavaScript files to inject, IN ORDER (dependencies first).
+        // Updated to match the actual files shipped in `Files/wwwroot`.
+        // `requests.js` is a consolidated bundle that replaces several
+        // older per-file modules (request-manager, requests-menu, header button).
         private static readonly string[] JsFiles = new[]
         {
-            "shared-utils.js",          // Creates window.MediaServerUI - MUST BE FIRST
-            "library-status.js",        // Creates window.LibraryStatus  
-            "details-modal.js",         // Uses window.MediaServerUI (with retry)
-            "select-to-cards.js",       // Uses window.MediaServerUI (with retry)
-            "request-manager.js",       // API functions for request operations
-            "requests-header-button.js", // Adds requests button to header with dropdown
-            "search-toggle.js"          // Standalone
+            "details-modal.js",    // Modal & TMDB metadata integration
+            "library-status.js",   // Library presence / status UI
+            "select-to-cards.js",  // Playback streams -> card UI
+            "requests.js",         // Consolidated requests manager, header button, menu
+            "search-toggle.js"     // Search toggle globe icon
         };
 
         // Transform method signature: accepts PatchRequestPayload, returns string
@@ -104,6 +105,13 @@ namespace Baklava
                         styleTags.Add($"<style>{cssContent}</style>");
                         PluginLogger.Log($"InjectScript: embedded custom.css ({cssContent.Length} chars)");
                     }
+                }
+                else
+                {
+                    // Fallback: reference the static CSS file in the plugin folder so
+                    // Jellyfin can serve it from /plugins/<PluginFolder>/Files/wwwroot/custom.css
+                    styleTags.Add($"<link rel=\"stylesheet\" href=\"/plugins/{PluginFolderName}/Files/wwwroot/custom.css\">");
+                    PluginLogger.Log("InjectScript: using static reference to custom.css");
                 }
             }
             catch (Exception ex)

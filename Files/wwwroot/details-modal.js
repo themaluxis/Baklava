@@ -1,26 +1,259 @@
+/**
+ * Details Modal - Standalone
+ * Shows TMDB metadata modal when clicking on search results
+ * All utilities inlined - no dependencies on shared-utils.js
+ */
 (function() {
     'use strict';
     
-    console.log('[DetailsModal] Script loading...');
-    
-    function init() {
-        const UI = window.MediaServerUI;
-        if (!UI) {
-            console.warn('[DetailsModal] MediaServerUI not ready, retrying in 100ms');
-            setTimeout(init, 100);
-            return;
+    console.log('[DetailsModal] Loading standalone version...');
+
+    // ============================================
+    // UTILITY FUNCTIONS (Inlined)
+    // ============================================
+
+    const TMDB_GENRES = {
+        28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
+        99: 'Documentary', 18: 'Drama', 10751: 'Family', 14: 'Fantasy', 36: 'History',
+        27: 'Horror', 10402: 'Music', 9648: 'Mystery', 10749: 'Romance', 878: 'Science Fiction',
+        10770: 'TV Movie', 53: 'Thriller', 10752: 'War', 37: 'Western'
+    };
+
+    function qs(selector, context = document) {
+        try {
+            return context.querySelector(selector);
+        } catch (e) {
+            console.warn('[DetailsModal] Invalid selector:', selector);
+            return null;
+        }
+    }
+
+    function qsa(selector, context = document) {
+        try {
+            return context.querySelectorAll(selector);
+        } catch (e) {
+            console.warn('[DetailsModal] Invalid selector:', selector);
+            return [];
+        }
+    }
+
+    function getBackgroundImage(element) {
+        if (!element) return '';
+        
+        const inline = element.style?.backgroundImage;
+        if (inline && inline !== 'none') {
+            return inline.replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
         }
         
-        console.log('[DetailsModal] Initializing...');
-    
-    // Small helper to escape HTML when injecting names/roles
+        const dataAttrs = ['data-src', 'data-image', 'src'];
+        for (const attr of dataAttrs) {
+            const value = element.getAttribute(attr);
+            if (value) return value;
+        }
+        
+        const styleStr = element.getAttribute('style') || '';
+        const match = styleStr.match(/background-image:\s*url\(([^)]+)\)/i);
+        if (match) {
+            return match[1].replace(/^["']|["']$/g, '');
+        }
+        
+        return '';
+    }
+
+    function setBackgroundImage(element, url, minHeight = '240px') {
+        if (!element) return;
+        
+        if (url) {
+            element.style.backgroundImage = `url('${url}')`;
+            element.style.minHeight = minHeight;
+        } else {
+            element.style.background = '#222';
+            element.style.minHeight = minHeight;
+        }
+    }
+
+    function parseJellyfinId(jellyfinId, cardElement) {
+        const result = {
+            tmdbId: null,
+            imdbId: null,
+            itemType: 'movie'
+        };
+
+        if (!jellyfinId) return result;
+
+        if (cardElement) {
+            result.tmdbId = cardElement.dataset.tmdbid || cardElement.dataset.tmdb || 
+                           cardElement.getAttribute('data-tmdbid') || cardElement.getAttribute('data-tmdb');
+            result.imdbId = cardElement.dataset.imdbid || cardElement.dataset.imdb || 
+                           cardElement.getAttribute('data-imdbid') || cardElement.getAttribute('data-imdb');
+            
+            const cardType = cardElement.dataset.type || cardElement.getAttribute('data-type') || '';
+            const cardClass = cardElement.className || '';
+            if (cardType.toLowerCase().includes('series') || cardClass.includes('Series') || cardClass.includes('series')) {
+                result.itemType = 'series';
+            }
+        }
+
+        if (jellyfinId.includes('gelato') || jellyfinId.includes('series') || jellyfinId.includes('tvdb')) {
+            result.itemType = 'series';
+        }
+
+        if (!result.tmdbId) {
+            const tmdbMatch = jellyfinId.match(/tmdb[_-](\d+)/i);
+            if (tmdbMatch) result.tmdbId = tmdbMatch[1];
+        }
+
+        if (!result.imdbId && /^tt\d+$/.test(jellyfinId)) {
+            result.imdbId = jellyfinId;
+        }
+
+        if (!result.tmdbId && /^\d+$/.test(jellyfinId)) {
+            result.tmdbId = jellyfinId;
+        }
+
+        return result;
+    }
+
+    async function getTMDBData(tmdbId, imdbId, itemType, title, year) {
+        try {
+            const params = new URLSearchParams();
+            if (tmdbId) params.append('tmdbId', tmdbId);
+            if (imdbId) params.append('imdbId', imdbId);
+            if (itemType) params.append('itemType', itemType);
+            if (title) params.append('title', title);
+            if (year) params.append('year', year);
+            params.append('includeCredits', 'false');
+            params.append('includeReviews', 'false');
+
+            const url = window.ApiClient.getUrl('api/myplugin/metadata/tmdb') + '?' + params.toString();
+            const response = await window.ApiClient.ajax({
+                type: 'GET',
+                url: url,
+                dataType: 'json'
+            });
+
+            return response?.main || response;
+        } catch (e) {
+            console.error('[DetailsModal.getTMDBData] Error:', e);
+            return null;
+        }
+    }
+
+    async function fetchTMDBCreditsAndReviews(mediaType, movieId) {
+        if (!movieId) return { credits: null, reviews: [] };
+
+        try {
+            const params = new URLSearchParams();
+            params.append('tmdbId', movieId);
+            params.append('itemType', mediaType === 'tv' ? 'series' : 'movie');
+            params.append('includeCredits', 'true');
+            params.append('includeReviews', 'true');
+
+            const url = window.ApiClient.getUrl('api/myplugin/metadata/tmdb') + '?' + params.toString();
+            const response = await window.ApiClient.ajax({
+                type: 'GET',
+                url: url,
+                dataType: 'json'
+            });
+
+            return {
+                credits: response?.credits || null,
+                reviews: response?.reviews?.results?.slice(0, 20) || []
+            };
+        } catch (err) {
+            console.error('[DetailsModal.fetchTMDBCreditsAndReviews] Error:', err);
+            return { credits: null, reviews: [] };
+        }
+    }
+
+    // Populate audio/subtitle streams for the item (uses plugin API)
+    async function populateStreams(modal) {
+        try {
+            const itemId = modal.dataset.itemId;
+            if (!itemId) return;
+
+            const url = window.ApiClient.getUrl('api/myplugin/metadata/streams') + '?itemId=' + encodeURIComponent(itemId);
+            const resp = await window.ApiClient.ajax({ type: 'GET', url: url, dataType: 'json' });
+            if (!resp) return;
+
+            const infoEl = qs('#item-detail-info', modal);
+            if (!infoEl) return;
+
+            // Create container
+            const streamsContainer = document.createElement('div');
+            streamsContainer.className = 'details-streams';
+            streamsContainer.style.cssText = 'margin-top:12px;color:#ccc;';
+
+            if (Array.isArray(resp.audio) && resp.audio.length > 0) {
+                const audioDiv = document.createElement('div');
+                audioDiv.innerHTML = '<h3 style="color:#fff;margin:6px 0">Audio Tracks</h3>';
+                const ul = document.createElement('ul');
+                ul.style.cssText = 'padding-left:18px;margin:6px 0;color:#ccc;';
+                resp.audio.forEach(a => {
+                    const li = document.createElement('li');
+                    li.textContent = (a.title || `Audio ${a.index}`) + (a.language ? ` (${a.language})` : '') + (a.codec ? ` [${a.codec}]` : '');
+                    ul.appendChild(li);
+                });
+                audioDiv.appendChild(ul);
+                streamsContainer.appendChild(audioDiv);
+            }
+
+            if (Array.isArray(resp.subs) && resp.subs.length > 0) {
+                const subsDiv = document.createElement('div');
+                subsDiv.innerHTML = '<h3 style="color:#fff;margin:6px 0">Subtitles</h3>';
+                const ul2 = document.createElement('ul');
+                ul2.style.cssText = 'padding-left:18px;margin:6px 0;color:#ccc;';
+                resp.subs.forEach(s => {
+                    const li = document.createElement('li');
+                    li.textContent = (s.title || `Subtitle ${s.index}`) + (s.language ? ` (${s.language})` : '') + (s.codec ? ` [${s.codec}]` : '') + (s.isDefault ? ' (default)' : '') + (s.isForced ? ' (forced)' : '');
+                    ul2.appendChild(li);
+                });
+                subsDiv.appendChild(ul2);
+                streamsContainer.appendChild(subsDiv);
+            }
+
+            if (streamsContainer.children.length > 0) {
+                infoEl.appendChild(streamsContainer);
+            }
+        } catch (e) {
+            console.error('[DetailsModal.populateStreams] Error:', e);
+        }
+    }
+
+    function formatGenres(genres, genreIds) {
+        if (genres?.length > 0) {
+            return genres.map(g => g.name || g).join(', ');
+        }
+        if (genreIds?.length > 0) {
+            return genreIds
+                .map(id => TMDB_GENRES[id] || 'Unknown')
+                .filter(g => g !== 'Unknown')
+                .join(', ');
+        }
+        return '';
+    }
+
+    function formatRuntime(minutes) {
+        if (!minutes) return '';
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return `${hours}h ${mins}m`;
+    }
+
+    function formatRating(rating) {
+        return rating ? `${Math.round(rating * 10) / 10}/10` : 'N/A';
+    }
+
     function escapeHtml(s) {
         return String(s || '').replace(/[&<>"']/g, function(c) {
             return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
         });
     }
+
+    // ============================================
+    // MODAL FUNCTIONS
+    // ============================================
     
-    // Create the modal element
     function createModal() {
         const overlay = document.createElement('div');
         overlay.className = 'item-detail-modal-overlay';
@@ -71,51 +304,43 @@
     }
 
     function attachEventListeners(overlay) {
-        const closeBtn = UI.qs('#item-detail-close', overlay);
-        const importBtn = UI.qs('#item-detail-import', overlay);
-        const requestBtn = UI.qs('#item-detail-request', overlay);
-        const approveBtn = UI.qs('#item-detail-approve', overlay);
-        const removeBtn = UI.qs('#item-detail-remove', overlay);
-        const openBtn = UI.qs('#item-detail-open', overlay);
-        const reviewPopup = UI.qs('#review-popup', overlay);
-        const closeReviewBtn = UI.qs('#close-review-popup', overlay);
+        const closeBtn = qs('#item-detail-close', overlay);
+        const importBtn = qs('#item-detail-import', overlay);
+        const requestBtn = qs('#item-detail-request', overlay);
+        const approveBtn = qs('#item-detail-approve', overlay);
+        const removeBtn = qs('#item-detail-remove', overlay);
+        const openBtn = qs('#item-detail-open', overlay);
+        const reviewPopup = qs('#review-popup', overlay);
+        const closeReviewBtn = qs('#close-review-popup', overlay);
 
         overlay.addEventListener('click', ev => ev.target === overlay && hideModal());
         closeBtn.addEventListener('click', hideModal);
         
         importBtn.addEventListener('click', async () => {
-            importBtn.disabled = true;
-            const imdbId = overlay.dataset.imdbId;
-            const tmdbId = overlay.dataset.tmdbId;
-            const itemType = overlay.dataset.itemType || 'movie';
-            
-            await window.ApiClient.addItemToLibrary({ tmdbId, imdbId, type: itemType });
-            await new Promise(r => setTimeout(r, 500));
-            await window.ApiClient.refreshLibrary();
-            
-            if (window.LibraryStatus && window.LibraryStatus.check) {
-                const inLibrary = await window.LibraryStatus.check(imdbId, tmdbId, itemType);
-                await switchButton(importBtn, requestBtn, openBtn, inLibrary);
+            const title = qs('#item-detail-title', overlay).textContent;
+            hideModal();
+            if (title) {
+                window.location.hash = '#/search.html?query=' + encodeURIComponent(title);
             }
-            importBtn.disabled = false;
         });
         
         requestBtn.addEventListener('click', () => {
+            console.log('[DetailsModal] Request button clicked');
             requestBtn.disabled = true;
             requestBtn.textContent = 'Pending';
             requestBtn.style.background = '#888';
-                const item = {
-                    title: UI.qs('#item-detail-title', overlay).textContent,
-                    year: UI.qs('#item-detail-meta', overlay).textContent,
-                    img: UI.qs('#item-detail-image', overlay).style.backgroundImage,
-                    imdbId: overlay.dataset.imdbId,
-                    tmdbId: overlay.dataset.tmdbId,
-                    itemType: overlay.dataset.itemType,
-                    status: 'pending'
-                };
-
-                // Dispatch custom event for your Requests tab script
-                document.dispatchEvent(new CustomEvent('mediaRequest', { detail: item }));
+            const item = {
+                title: qs('#item-detail-title', overlay).textContent,
+                year: qs('#item-detail-meta', overlay).textContent,
+                img: qs('#item-detail-image', overlay).style.backgroundImage,
+                imdbId: overlay.dataset.imdbId,
+                tmdbId: overlay.dataset.tmdbId,
+                itemType: overlay.dataset.itemType,
+                jellyfinId: overlay.dataset.itemId,
+                status: 'pending'
+            };
+            console.log('[DetailsModal] Dispatching mediaRequest event:', item);
+            document.dispatchEvent(new CustomEvent('mediaRequest', { detail: item }));
         });
         
         openBtn.addEventListener('click', () => {
@@ -124,11 +349,52 @@
         });
 
         approveBtn.addEventListener('click', async () => {
+            console.log('[DetailsModal] Approve button clicked');
             const requestId = overlay.dataset.requestId;
+            const tmdbId = overlay.dataset.tmdbId;
+            const imdbId = overlay.dataset.imdbId;
+            const itemType = overlay.dataset.itemType;
+            
             if (requestId && window.RequestManager) {
                 await window.RequestManager.updateStatus(requestId, 'approved');
                 if (window.RequestsHeaderButton) await window.RequestsHeaderButton.reload();
-                hideModal();
+                
+                if (imdbId) {
+                    const gelatoType = itemType === 'series' ? 'series' : 'movie';
+                    // Use ApiClient.getUrl so requests go through Jellyfin and include auth
+                    const gelatoUrl = window.ApiClient.getUrl(`gelato/meta/${gelatoType}/${imdbId}`);
+                    
+                    approveBtn.textContent = 'Fetching...';
+                    approveBtn.style.background = '#2196f3';
+                    
+                    try {
+                        await window.ApiClient.ajax({ type: 'GET', url: gelatoUrl });
+                        approveBtn.textContent = 'Refreshing Library...';
+                        
+                        try {
+                            await window.ApiClient.ajax({ type: 'POST', url: window.ApiClient.getUrl('Library/Refresh') });
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            if (window.LibraryMenu?.refresh) await window.LibraryMenu.refresh();
+                            window.Emby?.Page?.triggerPageReload?.();
+                            approveBtn.textContent = 'Added ✓';
+                            approveBtn.style.background = '#4caf50';
+                        } catch (refreshErr) {
+                            approveBtn.textContent = 'Fetched ✓';
+                            approveBtn.style.background = '#4caf50';
+                        }
+                        
+                        setTimeout(() => hideModal(), 1500);
+                    } catch (err) {
+                        console.error('[DetailsModal] Error:', err);
+                        approveBtn.textContent = 'Error';
+                        approveBtn.style.background = '#f44336';
+                        setTimeout(() => hideModal(), 2000);
+                    }
+                } else {
+                    approveBtn.textContent = 'Approved';
+                    approveBtn.style.background = '#4caf50';
+                    setTimeout(() => hideModal(), 1000);
+                }
             }
         });
 
@@ -141,6 +407,7 @@
             }
         });
 
+        // Hover effects
         importBtn.addEventListener('mouseenter', () => importBtn.style.background = '#1c7ed6');
         importBtn.addEventListener('mouseleave', () => importBtn.style.background = '#1e90ff');
         requestBtn.addEventListener('mouseenter', () => requestBtn.style.background = '#f57c00');
@@ -180,180 +447,235 @@
         }
     }
 
-    function getModal() { return UI.qs('#item-detail-modal-overlay') || createModal(); }
+    function getModal() { return qs('#item-detail-modal-overlay') || createModal(); }
     function showModal(modal) { modal.classList.add('open'); document.body.style.overflow = 'hidden'; }
     function hideLoading(modal) { 
-        const overlay = UI.qs('#item-detail-loading-overlay', modal);
+        const overlay = qs('#item-detail-loading-overlay', modal);
         if (overlay) overlay.style.display = 'none';
     }
     function hideModal() { 
-        const m = UI.qs('#item-detail-modal-overlay'); 
+        const m = qs('#item-detail-modal-overlay'); 
         if (m) { 
             m.classList.remove('open'); 
             document.body.style.overflow = '';
-            UI.qs('#item-detail-title', m).textContent = 'Loading…';
-            UI.qs('#item-detail-meta', m).textContent = '';
-            UI.qs('#item-detail-overview', m).textContent = '';
-            UI.qs('#item-detail-info', m).innerHTML = '';
-            UI.qs('#item-detail-reviews', m).innerHTML = '';
-            UI.qs('#item-detail-image', m).style.backgroundImage = '';
-            UI.qs('#item-detail-import', m).style.display = 'none';
-            UI.qs('#item-detail-request', m).style.display = 'none';
-            UI.qs('#item-detail-approve', m).style.display = 'none';
-            UI.qs('#item-detail-remove', m).style.display = 'none';
-            UI.qs('#item-detail-open', m).style.display = 'none';
-            const loadingOverlay = UI.qs('#item-detail-loading-overlay', m);
+            qs('#item-detail-title', m).textContent = 'Loading…';
+            qs('#item-detail-meta', m).textContent = '';
+            qs('#item-detail-overview', m).textContent = '';
+            qs('#item-detail-info', m).innerHTML = '';
+            qs('#item-detail-reviews', m).innerHTML = '';
+            qs('#item-detail-image', m).style.backgroundImage = '';
+            qs('#item-detail-import', m).style.display = 'none';
+            qs('#item-detail-request', m).style.display = 'none';
+            qs('#item-detail-approve', m).style.display = 'none';
+            qs('#item-detail-remove', m).style.display = 'none';
+            qs('#item-detail-open', m).style.display = 'none';
+            const loadingOverlay = qs('#item-detail-loading-overlay', m);
             if (loadingOverlay) loadingOverlay.style.display = 'flex';
         } 
     }
 
     function populateFromCard(anchor, id, modal) {
         const card = anchor.closest('.card') || anchor.closest('[data-id]');
-        const title = anchor.getAttribute('title') || anchor.textContent.trim() || UI.qs('.cardText-first a', card)?.textContent || 'Untitled';
-        const year = UI.qs('.cardText-secondary bdi', card)?.textContent || '';
-        const imgContainer = UI.qs('.cardImageContainer', card);
-        const bgImage = UI.getBackgroundImage(imgContainer);
+        const title = anchor.getAttribute('title') || anchor.textContent.trim() || qs('.cardText-first a', card)?.textContent || 'Untitled';
+        const year = qs('.cardText-secondary bdi', card)?.textContent || '';
+        const imgContainer = qs('.cardImageContainer', card);
+        const bgImage = getBackgroundImage(imgContainer);
         const isSeriesCard = card?.className?.includes('Series') || card?.parentElement?.className?.includes('series');
 
-        UI.qs('#item-detail-title', modal).textContent = title;
-        UI.qs('#item-detail-meta', modal).textContent = year || '';
-        UI.qs('#item-detail-overview', modal).textContent = '';
-        UI.setBackgroundImage(UI.qs('#item-detail-image', modal), bgImage);
+        qs('#item-detail-title', modal).textContent = title;
+        qs('#item-detail-meta', modal).textContent = year || '';
+        qs('#item-detail-overview', modal).textContent = '';
+        setBackgroundImage(qs('#item-detail-image', modal), bgImage);
         modal.dataset.itemId = id;
 
         fetchMetadata(id, card, modal, title, year, isSeriesCard).catch(() => {
-            UI.qs('#item-detail-loading', modal).style.display = 'none';
-            UI.qs('#item-detail-overview', modal).textContent = 'Could not fetch details.';
+            const loading = qs('#item-detail-loading', modal);
+            if (loading) loading.style.display = 'none';
+            qs('#item-detail-overview', modal).textContent = 'Could not fetch details.';
         });
     }
 
     async function fetchMetadata(jellyfinId, card, modal, title, year, forceSeries) {
         try {
-            let { tmdbId, imdbId, itemType } = UI.parseJellyfinId(jellyfinId, card);
+            let { tmdbId, imdbId, itemType } = parseJellyfinId(jellyfinId, card);
             if (forceSeries && itemType === 'movie') {
                 itemType = 'series';
             }
-            const tmdbData = await UI.getTMDBData(tmdbId, imdbId, itemType, title, year);
+            const tmdbData = await getTMDBData(tmdbId, imdbId, itemType, title, year);
 
             if (!tmdbData) {
-                UI.qs('#item-detail-info', modal).innerHTML = 'Could not find metadata.';
+                qs('#item-detail-info', modal).innerHTML = 'Could not find metadata.';
                 return;
             }
 
             const displayTitle = tmdbData.title || tmdbData.name;
-            if (displayTitle) UI.qs('#item-detail-title', modal).textContent = displayTitle;
-            if (tmdbData.overview) UI.qs('#item-detail-overview', modal).textContent = tmdbData.overview;
-            if (tmdbData.poster_path) UI.setBackgroundImage(UI.qs('#item-detail-image', modal), 'https://image.tmdb.org/t/p/w500' + tmdbData.poster_path);
+            if (displayTitle) qs('#item-detail-title', modal).textContent = displayTitle;
+            if (tmdbData.overview) qs('#item-detail-overview', modal).textContent = tmdbData.overview;
+            if (tmdbData.poster_path) setBackgroundImage(qs('#item-detail-image', modal), 'https://image.tmdb.org/t/p/w500' + tmdbData.poster_path);
 
-            // Detect actual type from TMDB response
-            const actualType = (tmdbData.name && tmdbData.number_of_seasons) ? 'series' : 'movie';
+            // Detect type from response (name=TV, title=movie)
+            const actualType = (tmdbData.name && !tmdbData.title) ? 'series' : 
+                              (tmdbData.title && !tmdbData.name) ? 'movie' :
+                              (tmdbData.number_of_seasons) ? 'series' : 'movie';
             
-            // Get IDs from TMDB response
             const tmdbIdFromResponse = tmdbData.id;
             let imdbIdFromResponse = imdbId || tmdbData.imdb_id;
             
-            // If we don't have IMDB ID yet, try to fetch external IDs
+            // Fetch external IDs if needed
             if (!imdbIdFromResponse && tmdbIdFromResponse) {
-                const externalIdsUrl = `https://api.themoviedb.org/3/${actualType === 'series' ? 'tv' : 'movie'}/${tmdbIdFromResponse}/external_ids?api_key=53e8a159d4635813b94f8c5876c604be`;
-                const externalRes = await fetch(externalIdsUrl);
-                if (externalRes.ok) {
-                    const externalData = await externalRes.json();
-                    imdbIdFromResponse = externalData.imdb_id;
+                try {
+                    const params = new URLSearchParams();
+                    params.append('tmdbId', tmdbIdFromResponse);
+                    params.append('mediaType', actualType === 'series' ? 'tv' : 'movie');
+                    
+                    const url = window.ApiClient.getUrl('api/myplugin/metadata/external-ids') + '?' + params.toString();
+                    const externalData = await window.ApiClient.ajax({ type: 'GET', url: url, dataType: 'json' });
+                    
+                    if (externalData?.imdb_id) {
+                        imdbIdFromResponse = externalData.imdb_id;
+                    }
+                } catch (err) {
+                    console.warn('[DetailsModal] Could not fetch external IDs:', err);
                 }
             }
             
-            const { credits, reviews } = await UI.fetchTMDBCreditsAndReviews(actualType === 'series' ? 'tv' : 'movie', tmdbData.id);
-            if (credits) populateCredits(modal, tmdbData, credits);
-            if (reviews.length > 0) populateReviews(modal, reviews);
+            modal.dataset.imdbId = imdbIdFromResponse;
+            modal.dataset.tmdbId = tmdbIdFromResponse;
+            modal.dataset.itemType = actualType;
             
-            if (window.LibraryStatus && window.LibraryStatus.check) {
-                // First check if item is already requested
+            const { credits, reviews } = await fetchTMDBCreditsAndReviews(actualType === 'series' ? 'tv' : 'movie', tmdbData.id);
+            if (credits) populateCredits(modal, tmdbData, credits);
+            if (reviews.length > 0) {
+                populateReviews(modal, reviews);
+                await populateStreams(modal);
+            }
+            
+            if (window.LibraryStatus?.check) {
                 const existingRequest = await window.LibraryStatus.checkRequest(imdbIdFromResponse, tmdbIdFromResponse, actualType);
                 
                 if (existingRequest) {
-                    // Item is requested - switch modal to request mode
-                    console.log('[DetailsModal] Item found in requests, switching to request mode');
+                    console.log('[DetailsModal] Item found in requests');
                     
-                    // Get current username to determine if it's own request
                     let currentUsername = 'Unknown';
-                    try {
-                        const userId = window.ApiClient.getCurrentUserId();
-                        const user = await window.ApiClient.getUser(userId);
-                        currentUsername = user?.Name || 'Unknown';
-                    } catch (err) {
-                        console.error('[DetailsModal] Error getting username:', err);
-                    }
-                    
-                    // Get admin status
                     let isAdmin = false;
                     try {
                         const userId = window.ApiClient.getCurrentUserId();
                         const user = await window.ApiClient.getUser(userId);
+                        currentUsername = user?.Name || 'Unknown';
                         isAdmin = user?.Policy?.IsAdministrator || false;
                     } catch (err) {
-                        console.error('[DetailsModal] Error checking admin:', err);
+                        console.warn('[DetailsModal] Error getting user via getUser, trying getCurrentUser:', err);
+                        try {
+                            const user = await window.ApiClient.getCurrentUser();
+                            currentUsername = user?.Name || 'Unknown';
+                            isAdmin = user?.Policy?.IsAdministrator || false;
+                        } catch (fallbackErr) {
+                            console.error('[DetailsModal] Fallback error:', fallbackErr);
+                        }
                     }
                     
                     const isOwnRequest = existingRequest.username === currentUsername;
                     
-                    // Store request data on modal
                     modal.dataset.requestId = existingRequest.id;
                     modal.dataset.isRequestMode = 'true';
                     
-                    // Show requester badge on poster
-                    const requesterEl = UI.qs('#item-detail-requester', modal);
+                    const requesterEl = qs('#item-detail-requester', modal);
                     if (requesterEl) {
-                        requesterEl.textContent = existingRequest.username;
+                        requesterEl.textContent = 'Requested by: ' + existingRequest.username;
                         requesterEl.style.display = 'block';
                     }
                     
-                    // Handle buttons based on request status
-                    const importBtn = UI.qs('#item-detail-import', modal);
-                    const requestBtn = UI.qs('#item-detail-request', modal);
-                    const openBtn = UI.qs('#item-detail-open', modal);
-                    const approveBtn = UI.qs('#item-detail-approve', modal);
-                    const removeBtn = UI.qs('#item-detail-remove', modal);
+                    const importBtn = qs('#item-detail-import', modal);
+                    const requestBtn = qs('#item-detail-request', modal);
+                    const openBtn = qs('#item-detail-open', modal);
+                    const approveBtn = qs('#item-detail-approve', modal);
+                    const removeBtn = qs('#item-detail-remove', modal);
                     
-                    // Hide Import/Request buttons
+                    // Hide all buttons initially
                     if (importBtn) importBtn.style.display = 'none';
                     if (requestBtn) requestBtn.style.display = 'none';
+                    if (openBtn) openBtn.style.display = 'none';
+                    if (approveBtn) approveBtn.style.display = 'none';
+                    if (removeBtn) removeBtn.style.display = 'none';
+                    
+                    // Clear any previous status messages
+                    const existingMsg = qs('.request-status-msg', modal);
+                    if (existingMsg) existingMsg.remove();
+                    
+                    console.log('[DetailsModal] Request status:', existingRequest.status, 'isAdmin:', isAdmin, 'isOwn:', isOwnRequest);
                     
                     if (isAdmin) {
-                        // Admin behavior
+                        // Admin viewing a request
                         if (existingRequest.status === 'pending') {
-                            if (approveBtn) approveBtn.style.display = 'block';
-                            if (removeBtn) removeBtn.style.display = 'block';
-                            if (openBtn) openBtn.style.display = 'none';
+                            // Pending - show approve + reject
+                            if (approveBtn) {
+                                approveBtn.style.display = 'block';
+                                approveBtn.textContent = 'Approve & Import';
+                            }
+                            if (removeBtn) {
+                                removeBtn.style.display = 'block';
+                                removeBtn.textContent = 'Reject Request';
+                            }
                         } else {
-                            // Approved
-                            if (approveBtn) approveBtn.style.display = 'none';
-                            if (removeBtn) removeBtn.style.display = 'block';
-                            if (openBtn) openBtn.style.display = 'none';
+                            // Approved - show import + remove
+                            if (importBtn) {
+                                importBtn.style.display = 'block';
+                                importBtn.textContent = 'Import Now';
+                            }
+                            if (removeBtn) {
+                                removeBtn.style.display = 'block';
+                                removeBtn.textContent = 'Remove Request';
+                            }
                         }
                     } else {
-                        // Non-admin behavior
+                        // Non-admin user viewing a request
                         if (existingRequest.status === 'pending') {
+                            // Pending request
                             if (isOwnRequest) {
+                                // User's own pending request - show cancel button
                                 if (removeBtn) {
                                     removeBtn.style.display = 'block';
-                                    removeBtn.textContent = 'Cancel';
+                                    removeBtn.textContent = 'Cancel Request';
                                 }
                                 if (approveBtn) approveBtn.style.display = 'none';
                                 if (openBtn) openBtn.style.display = 'none';
                             } else {
-                                // Others' pending: no buttons
+                                // Someone else's pending request - show nothing
                                 if (approveBtn) approveBtn.style.display = 'none';
                                 if (removeBtn) removeBtn.style.display = 'none';
                                 if (openBtn) openBtn.style.display = 'none';
+                                // Show status message
+                                const statusMsg = document.createElement('div');
+                                statusMsg.textContent = 'Already requested by ' + existingRequest.username;
+                                statusMsg.style.cssText = 'color: #ffa500; padding: 10px; text-align: center; background: rgba(255,165,0,0.1); border-radius: 4px; margin: 10px 0;';
+                                const buttonsDiv = qs('.item-detail-buttons', modal);
+                                if (buttonsDiv && !qs('.request-status-msg', modal)) {
+                                    statusMsg.className = 'request-status-msg';
+                                    buttonsDiv.appendChild(statusMsg);
+                                }
                             }
                         } else {
-                            // Approved request
-                            if (openBtn) openBtn.style.display = 'block';
+                            // Approved request - don't show "Open" unless it's actually in library!
+                            // Check if it's actually imported
+                            const actuallyInLibrary = await window.LibraryStatus.check(imdbIdFromResponse, tmdbIdFromResponse, actualType);
+                            if (actuallyInLibrary) {
+                                if (openBtn) openBtn.style.display = 'block';
+                            } else {
+                                // Approved but not imported yet - show status
+                                const statusMsg = document.createElement('div');
+                                statusMsg.textContent = 'Request approved - awaiting import';
+                                statusMsg.style.cssText = 'color: #4caf50; padding: 10px; text-align: center; background: rgba(76,175,80,0.1); border-radius: 4px; margin: 10px 0;';
+                                const buttonsDiv = qs('.item-detail-buttons', modal);
+                                if (buttonsDiv && !qs('.request-status-msg', modal)) {
+                                    statusMsg.className = 'request-status-msg';
+                                    buttonsDiv.appendChild(statusMsg);
+                                }
+                            }
                             if (approveBtn) approveBtn.style.display = 'none';
                             if (isOwnRequest) {
                                 if (removeBtn) {
                                     removeBtn.style.display = 'block';
-                                    removeBtn.textContent = 'Remove';
+                                    removeBtn.textContent = 'Remove Request';
                                 }
                             } else {
                                 if (removeBtn) removeBtn.style.display = 'none';
@@ -361,52 +683,46 @@
                         }
                     }
                     
-                    // Continue to hide loading and show modal
                     hideLoading(modal);
                     return;
                 }
                 
-                // Not requested - show normal library status buttons
                 const inLibrary = await window.LibraryStatus.check(imdbIdFromResponse, tmdbIdFromResponse, actualType);
-                const importBtn = UI.qs('#item-detail-import', modal);
-                const requestBtn = UI.qs('#item-detail-request', modal);
-                const openBtn = UI.qs('#item-detail-open', modal);
+                const importBtn = qs('#item-detail-import', modal);
+                const requestBtn = qs('#item-detail-request', modal);
+                const openBtn = qs('#item-detail-open', modal);
                 
-                // Hide request-specific buttons
-                const approveBtn = UI.qs('#item-detail-approve', modal);
-                const removeBtn = UI.qs('#item-detail-remove', modal);
-                const requesterEl = UI.qs('#item-detail-requester', modal);
+                const approveBtn = qs('#item-detail-approve', modal);
+                const removeBtn = qs('#item-detail-remove', modal);
+                const requesterEl = qs('#item-detail-requester', modal);
                 if (approveBtn) approveBtn.style.display = 'none';
                 if (removeBtn) removeBtn.style.display = 'none';
                 if (requesterEl) requesterEl.style.display = 'none';
                 
                 await switchButton(importBtn, requestBtn, openBtn, inLibrary);
-                modal.dataset.imdbId = imdbIdFromResponse;
-                modal.dataset.tmdbId = tmdbIdFromResponse;
-                modal.dataset.itemType = actualType;
             }
             
             hideLoading(modal);
 
         } catch (err) {
-            UI.qs('#item-detail-info', modal).innerHTML = '<div style="color:#ff6b6b;">Error fetching.</div>';
+            qs('#item-detail-info', modal).innerHTML = '<div style="color:#ff6b6b;">Error fetching.</div>';
             hideLoading(modal);
         }
     }
 
     function populateCredits(modal, data, credits) {
         let html = '';
-        const genreStr = UI.formatGenres(data.genres, data.genre_ids);
+        const genreStr = formatGenres(data.genres, data.genre_ids);
         if (genreStr) html += '<div><strong style="color:#1e90ff;">Genre:</strong> ' + genreStr + '</div>';
-        if (data.vote_average) html += '<div><strong style="color:#1e90ff;">Rating:</strong> ' + UI.formatRating(data.vote_average) + '</div>';
-        if (data.runtime) html += '<div><strong style="color:#1e90ff;">Runtime:</strong> ' + UI.formatRuntime(data.runtime) + '</div>';
+        if (data.vote_average) html += '<div><strong style="color:#1e90ff;">Rating:</strong> ' + formatRating(data.vote_average) + '</div>';
+        if (data.runtime) html += '<div><strong style="color:#1e90ff;">Runtime:</strong> ' + formatRuntime(data.runtime) + '</div>';
 
         if (credits.crew) {
             const directors = credits.crew.filter(c => c.job === 'Director');
             if (directors.length) html += '<div style="margin-top:12px;"><strong style="color:#1e90ff;">Director:</strong> ' + directors.map(d => d.name).join(', ') + '</div>';
         }
 
-        if (credits.cast && credits.cast.length) {
+        if (credits.cast?.length) {
             const topCast = credits.cast.slice(0, 12);
             html += '<div style="margin-top:12px;"><strong style="color:#1e90ff;">Cast:</strong></div>';
             html += '<div class="cast-grid">';
@@ -420,12 +736,12 @@
             html += '</div>';
         }
 
-        UI.qs('#item-detail-info', modal).innerHTML = html;
+        qs('#item-detail-info', modal).innerHTML = html;
     }
 
     function populateReviews(modal, reviews) {
         if (!reviews.length) return;
-        const reviewsDiv = UI.qs('#item-detail-reviews', modal);
+        const reviewsDiv = qs('#item-detail-reviews', modal);
         let html = '<strong style="color:#1e90ff;">Reviews:</strong><div class="reviews-carousel-wrapper" style="position:relative;margin-top:10px;padding:0 50px;"><button class="carousel-prev" style="position:absolute;left:0;top:50%;z-index:10;background:rgba(30,144,255,0.8);border:none;color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer;transform:translateY(-50%);">‹</button><button class="carousel-next" style="position:absolute;right:0;top:50%;z-index:10;background:rgba(30,144,255,0.8);border:none;color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer;transform:translateY(-50%);">›</button><div class="reviews-carousel" style="display:flex;gap:15px;transition:transform 0.3s ease;">';
 
         reviews.forEach(review => {
@@ -439,62 +755,78 @@
         html += '</div></div><div class="carousel-dots" style="display:flex;justify-content:center;gap:8px;margin-top:15px;"></div>';
         reviewsDiv.innerHTML = html;
 
-        const carousel = UI.qs('.reviews-carousel', reviewsDiv);
-        const prevBtn = UI.qs('.carousel-prev', reviewsDiv);
-        const nextBtn = UI.qs('.carousel-next', reviewsDiv);
+        const carousel = qs('.reviews-carousel', reviewsDiv);
+        const prevBtn = qs('.carousel-prev', reviewsDiv);
+        const nextBtn = qs('.carousel-next', reviewsDiv);
         let idx = 0;
 
         for (let i = 0; i < reviews.length; i++) {
             const dot = document.createElement('button');
             dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:' + (i === 0 ? '#1e90ff' : '#555') + ';border:none;cursor:pointer;padding:0;';
             dot.addEventListener('click', () => { idx = i; update(); });
-            UI.qs('.carousel-dots', reviewsDiv).appendChild(dot);
+            qs('.carousel-dots', reviewsDiv).appendChild(dot);
         }
 
         function update() {
-            const firstCard = UI.qs('.review-card', carousel);
+            const firstCard = qs('.review-card', carousel);
             if (firstCard) {
                 const cardWidth = firstCard.offsetWidth;
                 const gap = 15;
                 const offset = idx * (cardWidth + gap);
                 carousel.style.transform = 'translateX(-' + offset + 'px)';
             }
-            UI.qsa('button', UI.qs('.carousel-dots', reviewsDiv)).forEach((d, i) => d.style.background = i === idx ? '#1e90ff' : '#555');
+            qsa('button', qs('.carousel-dots', reviewsDiv)).forEach((d, i) => d.style.background = i === idx ? '#1e90ff' : '#555');
         }
 
         prevBtn.addEventListener('click', () => { if (idx > 0) { idx--; update(); } });
         nextBtn.addEventListener('click', () => { if (idx < reviews.length - 1) { idx++; update(); } });
         update();
 
-        UI.qsa('.review-card', reviewsDiv).forEach((card, i) => {
+        qsa('.review-card', reviewsDiv).forEach((card, i) => {
             if (reviews[i] && reviews[i].content.length > 200) {
                 card.addEventListener('click', () => {
-                    const popup = UI.qs('#review-popup');
-                    UI.qs('#review-popup-content', popup).innerHTML = '<h3 style="color:#fff;margin-bottom:15px;">Review by ' + reviews[i].author + '</h3>' + reviews[i].content;
+                    const popup = qs('#review-popup');
+                    qs('#review-popup-content', popup).innerHTML = '<h3 style="color:#fff;margin-bottom:15px;">Review by ' + reviews[i].author + '</h3>' + reviews[i].content;
                     popup.style.display = 'block';
                 });
             }
         });
     }
 
+    // Event listeners for opening modal from search results
     document.addEventListener('click', ev => {
         try {
-            if (!window.location.hash.includes('#/search')) return;
+            const hash = window.location.hash;
+            const isSearchPage = hash.includes('#/search');
+            if (!isSearchPage) return;
+            
             const anchor = ev.target.closest('a[href*="#/details"]');
-            if (!anchor || ev.button !== 0 || ev.ctrlKey) return;
+            if (!anchor) return;
+            
+            if (ev.button !== 0 || ev.ctrlKey) return;
+            
+            console.log('[DetailsModal] Intercepting click');
             ev.preventDefault();
             ev.stopPropagation();
 
             let id = anchor.dataset.id;
-            if (!id && anchor.href.includes('?')) {
-                try { id = new URLSearchParams(anchor.href.split('?')[1]).get('id'); } catch (e) {}
+            if (!id && anchor.href) {
+                const hashPart = anchor.href.split('#')[1] || '';
+                if (hashPart.includes('?')) {
+                    try { 
+                        const params = new URLSearchParams(hashPart.split('?')[1]);
+                        id = params.get('id');
+                    } catch (e) {}
+                }
             }
+            
             if (!id) return;
 
+            console.log('[DetailsModal] Opening for ID:', id);
             const modal = getModal();
             populateFromCard(anchor, id, modal);
             showModal(modal);
-        } catch (e) { console.error('[DetailsModal]', e); }
+        } catch (e) { console.error('[DetailsModal] Error:', e); }
     }, true);
 
     // Listen for request card clicks
@@ -503,51 +835,31 @@
             const { item, isRequestMode, requestId, requestUsername, isAdmin } = ev.detail || {};
             if (!item) return;
             
-            console.log('[DetailsModal] Opening modal for request:', requestId, 'by', requestUsername);
+            console.log('[DetailsModal] Opening modal for request');
             
             const modal = getModal();
-            const titleEl = UI.qs('#item-detail-title', modal);
-            const metaEl = UI.qs('#item-detail-meta', modal);
-            const imageEl = UI.qs('#item-detail-image', modal);
-            const overviewEl = UI.qs('#item-detail-overview', modal);
-            const importBtn = UI.qs('#item-detail-import', modal);
-            const requestBtn = UI.qs('#item-detail-request', modal);
-            const openBtn = UI.qs('#item-detail-open', modal);
-            const loadingEl = UI.qs('#item-detail-loading-overlay', modal);
-            
-            // Show loading
+            const loadingEl = qs('#item-detail-loading-overlay', modal);
             if (loadingEl) loadingEl.style.display = 'flex';
             
-            // Set basic info
-            if (titleEl) titleEl.textContent = item.Name || 'Loading...';
-            if (metaEl) metaEl.textContent = item.ProductionYear || '';
-            if (overviewEl) overviewEl.textContent = '';
+            qs('#item-detail-title', modal).textContent = item.Name || 'Loading...';
+            qs('#item-detail-meta', modal).textContent = item.ProductionYear || '';
+            qs('#item-detail-overview', modal).textContent = '';
             
-            // Store data on modal
+            modal.dataset.itemId = item.jellyfinId || item.tmdbId || item.imdbId;
             modal.dataset.tmdbId = item.tmdbId;
             modal.dataset.imdbId = item.imdbId;
+            modal.dataset.jellyfinId = item.jellyfinId;
             modal.dataset.itemType = item.itemType;
             modal.dataset.requestId = requestId;
             modal.dataset.isRequestMode = isRequestMode;
             
-            // Fetch full metadata from TMDB
-            const tmdbData = await UI.getTMDBData(
-                item.tmdbId,
-                item.imdbId,
-                item.itemType,
-                item.Name,
-                item.ProductionYear
-            );
+            const tmdbData = await getTMDBData(item.tmdbId, item.imdbId, item.itemType, item.Name, item.ProductionYear);
             
             if (tmdbData) {
-                // Update with full data
                 const displayTitle = tmdbData.title || tmdbData.name;
-                if (displayTitle && titleEl) {
-                    titleEl.textContent = displayTitle;
-                }
+                if (displayTitle) qs('#item-detail-title', modal).textContent = displayTitle;
                 
-                // Show requester badge on poster (left side, centered at top)
-                const requesterEl = UI.qs('#item-detail-requester', modal);
+                const requesterEl = qs('#item-detail-requester', modal);
                 if (requestUsername && requesterEl) {
                     requesterEl.textContent = requestUsername;
                     requesterEl.style.display = 'block';
@@ -555,58 +867,42 @@
                     requesterEl.style.display = 'none';
                 }
                 
-                if (tmdbData.overview && overviewEl) overviewEl.textContent = tmdbData.overview;
+                if (tmdbData.overview) qs('#item-detail-overview', modal).textContent = tmdbData.overview;
+                if (tmdbData.poster_path) setBackgroundImage(qs('#item-detail-image', modal), 'https://image.tmdb.org/t/p/w500' + tmdbData.poster_path);
                 
-                if (tmdbData.poster_path && imageEl) {
-                    UI.setBackgroundImage(imageEl, 'https://image.tmdb.org/t/p/w500' + tmdbData.poster_path);
-                }
-                
-                // Fetch credits and reviews (same as regular search results)
-                const { credits, reviews } = await UI.fetchTMDBCreditsAndReviews(
-                    item.itemType === 'series' ? 'tv' : 'movie',
-                    tmdbData.id
-                );
-                
-                // Populate credits with images (same function used for search results)
-                if (credits) {
-                    populateCredits(modal, tmdbData, credits);
-                }
-                
-                // Populate reviews carousel (same function used for search results)
-                if (reviews && reviews.length > 0) {
+                const { credits, reviews } = await fetchTMDBCreditsAndReviews(item.itemType === 'series' ? 'tv' : 'movie', tmdbData.id);
+                if (credits) populateCredits(modal, tmdbData, credits);
+                if (reviews?.length > 0) {
                     populateReviews(modal, reviews);
+                    await populateStreams(modal);
                 }
             }
             
-            // Show appropriate buttons based on request mode
-            const approveBtn = UI.qs('#item-detail-approve', modal);
-            const removeBtn = UI.qs('#item-detail-remove', modal);
+            const importBtn = qs('#item-detail-import', modal);
+            const requestBtn = qs('#item-detail-request', modal);
+            const openBtn = qs('#item-detail-open', modal);
+            const approveBtn = qs('#item-detail-approve', modal);
+            const removeBtn = qs('#item-detail-remove', modal);
             
             if (isRequestMode) {
                 const { requestStatus, isOwnRequest } = ev.detail || {};
                 
-                // Hide Import/Request buttons in request mode
                 if (importBtn) importBtn.style.display = 'none';
                 if (requestBtn) requestBtn.style.display = 'none';
                 
                 if (isAdmin) {
-                    // Admin behavior
                     if (requestStatus === 'pending') {
-                        // Pending: Show Approve + Remove
                         if (approveBtn) approveBtn.style.display = 'block';
                         if (removeBtn) removeBtn.style.display = 'block';
                         if (openBtn) openBtn.style.display = 'none';
                     } else {
-                        // Approved: Show Remove only
                         if (approveBtn) approveBtn.style.display = 'none';
                         if (removeBtn) removeBtn.style.display = 'block';
                         if (openBtn) openBtn.style.display = 'none';
                     }
                 } else {
-                    // Non-admin behavior
                     if (requestStatus === 'pending') {
                         if (isOwnRequest) {
-                            // Own pending request: Show Remove (as Cancel)
                             if (removeBtn) {
                                 removeBtn.style.display = 'block';
                                 removeBtn.textContent = 'Cancel';
@@ -614,44 +910,30 @@
                             if (approveBtn) approveBtn.style.display = 'none';
                             if (openBtn) openBtn.style.display = 'none';
                         } else {
-                            // Others' pending request: No buttons
                             if (approveBtn) approveBtn.style.display = 'none';
                             if (removeBtn) removeBtn.style.display = 'none';
                             if (openBtn) openBtn.style.display = 'none';
                         }
                     } else {
-                        // Approved request
                         if (openBtn) openBtn.style.display = 'block';
                         if (approveBtn) approveBtn.style.display = 'none';
                         if (isOwnRequest) {
-                            // Own approved: Show Remove too
                             if (removeBtn) {
                                 removeBtn.style.display = 'block';
                                 removeBtn.textContent = 'Remove';
                             }
                         } else {
-                            // Others' approved: No Remove
                             if (removeBtn) removeBtn.style.display = 'none';
                         }
                     }
                 }
-            } else {
-                // Regular search mode - this should never happen now since we redirect in fetchMetadata
-                // But keep as fallback
-                if (approveBtn) approveBtn.style.display = 'none';
-                if (removeBtn) removeBtn.style.display = 'none';
-                
-                const requesterEl = UI.qs('#item-detail-requester', modal);
-                if (requesterEl) requesterEl.style.display = 'none';
             }
             
-            // Hide loading
             if (loadingEl) loadingEl.style.display = 'none';
-            
             showModal(modal);
         } catch (e) { 
             console.error('[DetailsModal] Error opening request modal:', e);
-            const loadingEl = UI.qs('#item-detail-loading-overlay', getModal());
+            const loadingEl = qs('#item-detail-loading-overlay', getModal());
             if (loadingEl) loadingEl.style.display = 'none';
         }
     });
@@ -659,13 +941,6 @@
     window.addEventListener('hashchange', hideModal);
     window.addEventListener('popstate', hideModal);
     document.addEventListener('visibilitychange', () => { if (document.hidden) hideModal(); });
-    }
-    
-    // Start initialization with retry logic
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
-})();
 
+    console.log('[DetailsModal] Standalone version loaded');
+})();
