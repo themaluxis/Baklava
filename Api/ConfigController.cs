@@ -21,7 +21,18 @@ namespace Baklava.Api
         {
             var cfg = Plugin.Instance?.Configuration;
             if (cfg == null) return BadRequest("Configuration not available");
-            return Ok(new { defaultTmdbId = cfg.DefaultTmdbId, tmdbApiKey = cfg.TmdbApiKey });
+
+            // Only return the TMDB API key to administrators. Non-admin callers will receive
+            // only non-sensitive configuration so we don't leak secrets to user-facing pages.
+            var user = HttpContext.User;
+            var isAdmin = user?.IsInRole("Administrator") ?? false;
+
+            if (isAdmin)
+            {
+                return Ok(new { defaultTmdbId = cfg.DefaultTmdbId, tmdbApiKey = cfg.TmdbApiKey });
+            }
+
+            return Ok(new { defaultTmdbId = cfg.DefaultTmdbId });
         }
 
         // Admin-only update: requires authenticated admin user
