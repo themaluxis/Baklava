@@ -1,4 +1,4 @@
-<h1 align="center">🍮 Baklava</h1>
+<h1 align="center">Baklava</h1>
 <h3 align="center">Jellyfin Media Request & Search Enhancement Plugin</h3>
 
 <p align="center">
@@ -142,8 +142,4 @@ When **Force TV Client Local Search** is enabled (default: ON):
 <p align="center">
 <img src="https://img.shields.io/badge/Platform-Jellyfin-blue?style=for-the-badge&logo=jellyfin" alt="Jellyfin Badge"/>
 <img src="https://img.shields.io/badge/Plugin-Baklava-orange?style=for-the-badge&logo=github" alt="Baklava Badge"/>
-</p>
-
-<p align="center">
-<i>Because every server deserves a sweet layer of Baklava 🍯</i>
 </p>
