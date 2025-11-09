@@ -169,13 +169,22 @@
                 margin: 8px 0;
             }
             
+            /* Carousel label (only for audio and subtitle) */
+            .stc-label {
+                font-size: 1.1em;
+                font-weight: 500;
+                color: rgba(255,255,255,0.9);
+                margin-bottom: 8px;
+                text-align: center;
+            }
+            
             /* Cards container */
             .stc-cards {
                 display: flex;
                 gap: 12px;
                 overflow-x: auto;
                 scroll-behavior: smooth;
-                padding: 8px 48px;
+                padding: 8px 50px;
                 scrollbar-width: none;
                 -ms-overflow-style: none;
                 position: relative;
@@ -272,8 +281,8 @@
                 cursor: default;
             }
             
-            .stc-arrow.stc-arrow-left { left: 48px; }
-            .stc-arrow.stc-arrow-right { right: 48px; }
+            .stc-arrow.stc-arrow-left { left: 4px; }
+            .stc-arrow.stc-arrow-right { right: 4px; }
             
             /* Loading state */
             .stc-loading {
@@ -530,6 +539,14 @@
         if (!wrapper) {
             wrapper = document.createElement('div');
             wrapper.className = 'stc-wrapper';
+            
+            // Add label only for audio and subtitle tracks, not for version
+            if (type === 'audio' || type === 'subtitle') {
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'stc-label';
+                labelDiv.textContent = type === 'audio' ? 'Audio Track' : 'Subtitles';
+                wrapper.appendChild(labelDiv);
+            }
             
             cardsContainer = document.createElement('div');
             cardsContainer.className = 'stc-cards';
