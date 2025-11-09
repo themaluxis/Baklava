@@ -147,11 +147,7 @@ Jellyfin Search   External Search
 - Check server logs for errors
 
 ## � License
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - **Jellyfin** - For the amazing media server platform
 - **Gelato** ([lostb1t/Gelato](https://github.com/lostb1t/Gelato)) - External search provider integration
