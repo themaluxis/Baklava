@@ -449,17 +449,17 @@
                     <div class="dropdown-movies-container" style="display: flex; flex-wrap: wrap; gap: 15px; min-height: 50px;"></div>
                 </div>
 
-                <div class="dropdown-series" style="margin-top: 20px;">
+                <div class="dropdown-series"">
                     <h3 style="color: #1e90ff; margin-bottom: 10px;">Series Requests</h3>
                     <div class="dropdown-series-container" style="display: flex; flex-wrap: wrap; gap: 15px; min-height: 50px;"></div>
                 </div>
 
-                <div class="dropdown-approved" style="margin-top: 30px;">
+                <div class="dropdown-approved"">
                     <h3 style="color: #4caf50; margin-bottom: 10px;">Approved</h3>
                     <div class="dropdown-approved-container" style="display: flex; flex-wrap: wrap; gap: 15px; min-height: 50px;"></div>
                 </div>
 
-                <div class="dropdown-rejected" style="margin-top: 30px;">
+                <div class="dropdown-rejected"">
                     <h3 style="color: #f44336; margin-bottom: 10px;">Rejected</h3>
                     <div class="dropdown-rejected-container" style="display: flex; flex-wrap: wrap; gap: 15px; min-height: 50px;"></div>
                 </div>
@@ -602,47 +602,67 @@
     // ============================================
 
     function addRequestsButton() {
-        // Try Material UI header first (newer Jellyfin)
-        const muiToolbar = document.querySelector('.MuiToolbar-root .css-2uchni, .MuiToolbar-root div[class*="css-"]');
-        if (muiToolbar && !document.querySelector('.mui-requests-button')) {
-            const btn = document.createElement('button');
-            btn.className = 'MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeLarge mui-requests-button css-g99rn3';
-            btn.setAttribute('tabindex', '0');
-            btn.setAttribute('type', 'button');
-            btn.setAttribute('aria-label', 'Media Requests');
-            btn.setAttribute('data-role', 'requests-button');
-            btn.title = 'Media Requests';
-            btn.innerHTML = `
-                <svg class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-ya380f" focusable="false" aria-hidden="true" viewBox="0 0 24 24">
-                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"></path>
-                </svg>
-            `;
-            
-            const userButton = muiToolbar.querySelector('button[aria-label="User Menu"]');
-            if (userButton) {
-                muiToolbar.insertBefore(btn, userButton);
-            } else {
-                muiToolbar.appendChild(btn);
-            }
-            
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                toggleDropdown(btn);
-            });
-            
+        // Skip if button already exists
+        if (document.querySelector('.mui-requests-button, .headerRequestsButton')) {
             return;
+        }
+        
+        console.log('[Requests] Attempting to add button to header...');
+        
+        // Try Material UI header first (newer Jellyfin)
+        // The MUI toolbar structure is different on different pages
+        // On dashboard, look for the specific container with user menu
+        const muiToolbars = document.querySelectorAll('.MuiToolbar-root');
+        
+        for (const muiToolbar of muiToolbars) {
+            // Look for the MuiBox-root.css-2uchni that contains the user button
+            const userMenuContainer = muiToolbar.querySelector('.MuiBox-root.css-2uchni');
+            
+            if (userMenuContainer) {
+                // Check if this container has the user menu button
+                const userButton = userMenuContainer.querySelector('button[aria-label="User Menu"]');
+                if (!userButton) {
+                    continue; // Not the right container
+                }
+                
+                console.log('[Requests] Found MUI user menu container (.css-2uchni) with User Menu button, adding requests button');
+                
+                const btn = document.createElement('button');
+                btn.className = 'MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeLarge mui-requests-button css-g99rn3';
+                btn.setAttribute('tabindex', '0');
+                btn.setAttribute('type', 'button');
+                btn.setAttribute('aria-label', 'Media Requests');
+                btn.setAttribute('data-role', 'requests-button');
+                btn.title = 'Media Requests';
+                btn.innerHTML = `
+                    <svg class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-ya380f" focusable="false" aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"></path>
+                    </svg>
+                    <span class="MuiTouchRipple-root css-4mb1j7"></span>
+                `;
+                
+                // Insert BEFORE the user button (inside the same container)
+                userMenuContainer.insertBefore(btn, userButton);
+                
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleDropdown(btn);
+                });
+                
+                console.log('[Requests] MUI button added successfully inside user menu container');
+                return;
+            }
         }
 
         // Fallback to legacy header
         const headerRight = document.querySelector('.headerRight');
         if (!headerRight) {
+            console.log('[Requests] No header found, will retry');
             setTimeout(addRequestsButton, 500);
             return;
         }
         
-        if (document.querySelector('.headerRequestsButton')) {
-            return;
-        }
+        console.log('[Requests] Using legacy header');
         
         const btn = document.createElement('button');
         btn.setAttribute('is', 'paper-icon-button-light');
@@ -663,6 +683,7 @@
             toggleDropdown(btn);
         });
         
+        console.log('[Requests] Legacy button added successfully');
     }
 
     // ============================================
@@ -935,12 +956,33 @@
         };
         waitForApiClient();
         
-        // Add header button
+        // Add header button with retry logic
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', addRequestsButton);
+            document.addEventListener('DOMContentLoaded', () => {
+                addRequestsButton();
+                // Retry a few times in case header loads late
+                setTimeout(addRequestsButton, 500);
+                setTimeout(addRequestsButton, 1500);
+                setTimeout(addRequestsButton, 3000);
+            });
         } else {
             addRequestsButton();
+            setTimeout(addRequestsButton, 500);
+            setTimeout(addRequestsButton, 1500);
+            setTimeout(addRequestsButton, 3000);
         }
+        
+        // Watch for header being added dynamically
+        const headerObserver = new MutationObserver(() => {
+            if (!document.querySelector('.mui-requests-button, .headerRequestsButton')) {
+                addRequestsButton();
+            }
+        });
+        
+        headerObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
         
         // Add menu item (retry pattern for dynamic UI)
         const tryAddMenuItem = () => {

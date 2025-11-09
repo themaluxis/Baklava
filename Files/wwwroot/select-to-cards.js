@@ -1,978 +1,883 @@
 /**
- * Select to Cards - Standalone
+ * Select to Cards - Simplified & Reliable
  * Converts playback version/audio/subtitle dropdowns to card carousels
- * All utilities inlined - no dependencies on shared-utils.js
+ * Rewritten for simplicity, reliability, and faster initialization
  */
 (function () {
     'use strict';
     
-    console.log('[SelectToCards] Loading standalone version...');
+    console.log('[SelectToCards] Loading simplified version...');
 
     // ============================================
-    // UTILITY FUNCTIONS (Inlined)
+    // STATE & CONFIGURATION
+    // ============================================
+    
+    let initialized = false;
+    let currentItemId = null;
+    let streamCache = new Map(); // Cache streams per mediaSourceId to avoid re-fetching
+    
+    // Clear cache when navigating away or player stops
+    function clearStreamCache() {
+        console.log('[SelectToCards] Clearing stream cache');
+        streamCache.clear();
+        // Don't clear currentItemId here - we might still need it
+    }
+    
+    // ============================================
+    // UTILITY FUNCTIONS
     // ============================================
 
-    function throttle(func, limit = 300) {
-        let lastCall = 0;
-        return function(...args) {
-            const now = Date.now();
-            if (now - lastCall >= limit) {
-                lastCall = now;
-                func(...args);
-            }
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func(...args), wait);
         };
     }
 
-    function emitEvent(element, eventName, bubbles = true) {
-        try {
-            const event = new Event(eventName, { bubbles });
-            element.dispatchEvent(event);
-        } catch (e) {
-            const event = document.createEvent('HTMLEvents');
-            event.initEvent(eventName, bubbles, false);
-            element.dispatchEvent(event);
-        }
+    function emitEvent(element, eventName) {
+        const event = new Event(eventName, { bubbles: true, cancelable: true });
+        element.dispatchEvent(event);
     }
 
-    // Wait for a predicate to become true (polling). Returns true if predicate satisfied within timeout.
-    function waitFor(predicate, timeout = 8000, interval = 100) {
-        return new Promise(resolve => {
-            const start = Date.now();
-            const check = () => {
-                try {
-                    if (typeof predicate === 'function' && predicate()) return resolve(true);
-                } catch (e) { /* ignore predicate errors */ }
-                if (Date.now() - start >= timeout) return resolve(false);
-                setTimeout(check, interval);
-            };
-            check();
-        });
-    }
-
-    async function probeItemStreams(itemId, mediaSourceId) {
-        console.log('[SelectToCards.probeItemStreams] Called with itemId:', itemId, 'mediaSourceId:', mediaSourceId);
+    async function fetchStreams(itemId, mediaSourceId, forceRefresh = false) {
+        const cacheKey = `${itemId}_${mediaSourceId}`;
         
-        if (!itemId) {
-            console.warn('[SelectToCards.probeItemStreams] No itemId');
-            return null;
-        }
-
-        try {
-            if (!window.ApiClient) {
-                console.warn('[SelectToCards.probeItemStreams] No ApiClient');
-                return null;
+        // Return cached result if available and fresh (under 3 seconds old) and not forced
+        if (!forceRefresh && streamCache.has(cacheKey)) {
+            const cached = streamCache.get(cacheKey);
+            if (Date.now() - cached.timestamp < 3000) {
+                console.log('[SelectToCards] Using cached streams for', cacheKey);
+                return cached.data;
             }
-            
-            const params = new URLSearchParams();
-            params.append('itemId', itemId);
+        }
+        
+        console.log('[SelectToCards] Fetching streams for itemId:', itemId, 'mediaSourceId:', mediaSourceId);
+        
+        try {
+            const params = new URLSearchParams({ itemId });
             if (mediaSourceId) params.append('mediaSourceId', mediaSourceId);
+            // Add timestamp to force bypass any HTTP cache
+            params.append('_t', Date.now().toString());
 
-            const url = window.ApiClient.getUrl('api/baklava/metadata/streams') + '?' + params.toString();
-            console.log('[SelectToCards.probeItemStreams] Fetching URL:', url);
-            
+            const url = window.ApiClient.getUrl('api/baklava/metadata/streams') + '?' + params;
             const response = await window.ApiClient.ajax({
                 type: 'GET',
                 url: url,
                 dataType: 'json'
             });
 
-            console.log('[SelectToCards.probeItemStreams] Backend response:', response);
+            // Cache the result
+            streamCache.set(cacheKey, {
+                data: response,
+                timestamp: Date.now()
+            });
 
-            if (response) {
-                const result = {
-                    Id: response.mediaSourceId,
-                    MediaStreams: [
-                        ...response.audio.map(a => ({
-                            Type: 'Audio',
-                            Index: a.index,
-                            DisplayTitle: a.title,
-                            Title: a.title,
-                            Language: a.displayLanguage || a.language,
-                            Codec: a.codec,
-                            Channels: a.channels,
-                            BitRate: a.bitrate
-                        })),
-                        ...response.subs.map(s => ({
-                            Type: 'Subtitle',
-                            Index: s.index,
-                            DisplayTitle: s.title,
-                            Title: s.title,
-                            Language: s.displayLanguage || s.language,
-                            Codec: s.codec,
-                            IsForced: s.isForced,
-                            IsDefault: s.isDefault
-                        }))
-                    ]
-                };
-                console.log('[SelectToCards.probeItemStreams] Returning formatted result:', result);
-                return result;
-            }
-
-            console.warn('[SelectToCards.probeItemStreams] No response from backend');
-            return null;
+            return response;
         } catch (err) {
-            console.error('[SelectToCards.probeItemStreams] Error:', err);
+            console.error('[SelectToCards] Error fetching streams:', err);
             return null;
         }
     }
 
-    function extractStreams(mediaSource) {
-        const result = { audio: [], subs: [] };
-
-        if (!mediaSource?.MediaStreams?.length) {
-            console.warn('[SelectToCards.extractStreams] No MediaStreams in source:', mediaSource);
-            return result;
-        }
-
-        console.log('[SelectToCards.extractStreams] Processing', mediaSource.MediaStreams.length, 'streams');
-
-        // Helper to derive a friendly type string from codec/title/channels
-        function deriveAudioType(s) {
-            // Prefer codec if present
-            if (s.Codec) {
-                const c = s.Codec.toLowerCase();
-                const map = { aac: 'AAC', ac3: 'AC3', eac3: 'E-AC3', dts: 'DTS', opus: 'Opus', mp3: 'MP3', flac: 'FLAC' };
-                if (map[c]) return map[c];
-                return s.Codec.toUpperCase();
-            }
-            if (s.Channels) {
-                return (s.Channels === 2 ? 'Stereo' : `${s.Channels}ch`);
-            }
-            // fallback to title/content hints
-            const t = (s.DisplayTitle || s.Title || '').toLowerCase();
-            if (t.includes('aac')) return 'AAC';
-            if (t.includes('ac3')) return 'AC3';
-            if (t.includes('dts')) return 'DTS';
-            if (t.includes('opus')) return 'Opus';
-            return '';
-        }
-
-        function deriveSubtitleType(s) {
-            if (s.Codec) {
-                const c = s.Codec.toLowerCase();
-                const map = { srt: 'SRT', ass: 'ASS', webvtt: 'VTT', vtt: 'VTT', 'subrip': 'SRT' };
-                if (map[c]) return map[c];
-                return s.Codec.toUpperCase();
-            }
-            const t = (s.DisplayTitle || s.Title || '').toLowerCase();
-            if (t.includes('.srt') || t.includes('srt')) return 'SRT';
-            if (t.includes('.ass') || t.includes('ass')) return 'ASS';
-            if (t.includes('vtt') || t.includes('webvtt')) return 'VTT';
-            return '';
-        }
-
-        mediaSource.MediaStreams.forEach((stream) => {
-            if (stream.Type === 'Audio') {
-                const dispLang = stream.DisplayTitle || stream.Language || stream.Title || '';
-                const type = deriveAudioType(stream);
-                result.audio.push({
-                    index: stream.Index,
-                    title: String(dispLang),
-                    language: stream.Language,
-                    displayLanguage: dispLang,
-                    codec: stream.Codec,
-                    channels: stream.Channels,
-                    type: type
-                });
-            } else if (stream.Type === 'Subtitle') {
-                const dispLang = stream.DisplayTitle || stream.Language || stream.Title || '';
-                const type = deriveSubtitleType(stream);
-                result.subs.push({
-                    index: stream.Index,
-                    title: String(dispLang),
-                    language: stream.Language,
-                    displayLanguage: dispLang,
-                    codec: stream.Codec,
-                    isForced: stream.IsForced,
-                    isDefault: stream.IsDefault,
-                    type: type
-                });
-            }
-        });
-
-        console.log('[SelectToCards.extractStreams] Extracted', result.audio.length, 'audio and', result.subs.length, 'subtitle streams');
-        return result;
-    }
-
-    // ============================================
-    // SELECT MONITORING
-    // ============================================
-
-    function monitorSelectAccess(select) {
-        if (select._monitored) return;
-        select._monitored = true;
+    function formatStreamTitle(stream, isAudio) {
+        // Get language - convert to full name and capitalize first letter
+        let langCode = stream.language || stream.displayLanguage || '';
+        let lang = 'Unknown';
         
-        const originalValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
-        const originalIndex = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex');
-
-        Object.defineProperty(select, 'value', {
-            get: function() { return originalValue.get.call(this); },
-            set: function(val) {
-                if (this._isUserAction) {
-                    this._userLockedValue = val;
-                    this._userLockedIndex = null;
-                }
-                originalValue.set.call(this, this._userLockedValue !== null && 
-                    (this.classList.contains('selectAudio') || this.classList.contains('selectSubtitles')) && 
-                    !this._isUserAction ? this._userLockedValue : val);
+        if (langCode) {
+            // Map common language codes to full names
+            const langMap = {
+                'eng': 'English',
+                'spa': 'Spanish',
+                'fre': 'French',
+                'fra': 'French',
+                'ger': 'German',
+                'deu': 'German',
+                'ita': 'Italian',
+                'por': 'Portuguese',
+                'rus': 'Russian',
+                'jpn': 'Japanese',
+                'kor': 'Korean',
+                'chi': 'Chinese',
+                'zho': 'Chinese',
+                'ara': 'Arabic',
+                'hin': 'Hindi',
+                'tur': 'Turkish',
+                'pol': 'Polish',
+                'dut': 'Dutch',
+                'nld': 'Dutch',
+                'swe': 'Swedish',
+                'nor': 'Norwegian',
+                'dan': 'Danish',
+                'fin': 'Finnish',
+                'gre': 'Greek',
+                'ell': 'Greek',
+                'heb': 'Hebrew',
+                'cze': 'Czech',
+                'ces': 'Czech',
+                'hun': 'Hungarian',
+                'rum': 'Romanian',
+                'ron': 'Romanian',
+                'tha': 'Thai',
+                'vie': 'Vietnamese',
+                'ind': 'Indonesian',
+                'may': 'Malay',
+                'msa': 'Malay',
+                'ukr': 'Ukrainian',
+                'bul': 'Bulgarian',
+                'hrv': 'Croatian',
+                'srp': 'Serbian',
+                'slv': 'Slovenian',
+                'cat': 'Catalan'
+            };
+            
+            const lowerCode = langCode.toLowerCase();
+            if (langMap[lowerCode]) {
+                lang = langMap[lowerCode];
+            } else {
+                // Capitalize first letter of unknown language
+                lang = langCode.charAt(0).toUpperCase() + langCode.slice(1).toLowerCase();
             }
-        });
+        }
         
-        Object.defineProperty(select, 'selectedIndex', {
-            get: function() { return originalIndex.get.call(this); },
-            set: function(idx) {
-                if (this._isUserAction) {
-                    this._userLockedIndex = idx;
-                    this._userLockedValue = null;
-                }
-                originalIndex.set.call(this, this._userLockedIndex !== null && 
-                    (this.classList.contains('selectAudio') || this.classList.contains('selectSubtitles')) && 
-                    !this._isUserAction ? this._userLockedIndex : idx);
-            }
-        });
+        const codec = (stream.codec || '').toUpperCase();
+        const type = isAudio 
+            ? (stream.channels === 2 ? 'Stereo' : stream.channels ? `${stream.channels}ch` : codec)
+            : codec;
+        
+        return { lang, type };
     }
 
     // ============================================
     // UI STYLING
     // ============================================
 
-    function ensureStyle() {
-        if (document.getElementById('emby-select-cards-style')) return;
+    function injectStyles() {
+        if (document.getElementById('select-to-cards-style')) return;
+        
         const style = document.createElement('style');
-        style.id = 'emby-select-cards-style';
+        style.id = 'select-to-cards-style';
         style.textContent = `
-            form.trackSelections { max-width: none !important; width: 100% !important; }
+            /* Hide original select containers */
             form.trackSelections .selectContainer { display: none !important; }
+            form.trackSelections { max-width: none !important; width: 100% !important; }
             
-            .emby-select-cards {
-                display: flex !important; flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden !important;
-                gap: 8px !important; padding: 8px 0 !important; scroll-behavior: smooth !important;
-                scrollbar-width: none !important; -ms-overflow-style: none !important;
-            }
-            .emby-select-cards::-webkit-scrollbar { display: none !important; }
-            
-                /* Remove large horizontal padding so arrows can overlay cards without pushing them
-                    The arrows will be absolutely positioned over the cards container. */
-                .emby-select-wrapper { position: relative !important; padding: 0 !important; }
-
-            .emby-select-arrow {
-                position: absolute !important; /* top set by JS for precise centering */
-                width: 36px !important; height: 36px !important; border-radius: 50% !important; border: none !important;
-                background: rgba(0,0,0,0.45) !important; color: #fff !important; display: flex !important; align-items: center !important; justify-content: center !important;
-                cursor: pointer !important; z-index: 20 !important; font-size: 20px !important; line-height: 1 !important;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
-            }
-            .emby-select-arrow.left { left: 8px !important; }
-            .emby-select-arrow.right { right: 8px !important; }
-            .emby-select-arrow:disabled { opacity: 0.35 !important; cursor: default !important; }
-            
-            .carousel-label {
-                font-size: 1.1em !important; font-weight: 500 !important; color: rgba(255,255,255,0.9) !important;
-                margin-bottom: 8px !important; margin-top: 16px !important; text-align: center !important;
+            /* Carousel wrapper */
+            .stc-wrapper {
+                position: relative;
+                margin: 8px 0;
             }
             
-            .emby-select-card {
-                flex: 0 0 auto !important; background: rgba(255,255,255,0.1) !important;
-                border: 1px solid rgba(255,255,255,0.2) !important; border-radius: 6px !important;
-                padding: 12px 16px !important; width: 120px !important; height: 100px !important;
-                display: flex !important; align-items: center !important; justify-content: center !important;
-                text-align: center !important; cursor: pointer !important; transition: all 0.2s ease !important;
-                user-select: none !important; font-size: 14px !important; color: rgba(255,255,255,0.8) !important;
+            /* Carousel label */
+            .stc-label {
+                font-size: 1.1em;
+                font-weight: 500;
+                color: rgba(255,255,255,0.9);
+                margin-bottom: 12px;
+                text-align: center;
             }
-            /* Smaller cards for audio/subtitle since language is compact */
-            .emby-select-card.audio-card, .emby-select-card.subtitle-card {
-                height: 60px !important; padding: 6px 8px !important; font-size: 13px !important;
-                width: 88px !important; display: flex !important; flex-direction: column !important; justify-content: center !important; align-items: center !important;
+            
+            /* Cards container */
+            .stc-cards {
+                display: flex;
+                gap: 12px;
+                overflow-x: auto;
+                scroll-behavior: smooth;
+                padding: 8px 48px;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
             }
-            .emby-select-card.placeholder { cursor: default !important; opacity: 0.5 !important; }
-            .emby-select-card.placeholder:hover { background: rgba(255,255,255,0.1) !important; transform: none !important; }
-            .emby-select-card:hover { background: rgba(255,255,255,0.15) !important; border-color: rgba(255,255,255,0.3) !important; transform: translateY(-1px) !important; }
-            .emby-select-card.selected { background: #00a4dc !important; color: #fff !important; }
-            .emby-select-card.disabled { background: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; color: rgba(255,255,255,0.4) !important; cursor: not-allowed !important; }
+            .stc-cards::-webkit-scrollbar { display: none; }
             
-            .emby-select-pagination { display: flex !important; justify-content: center !important; gap: 8px !important; padding: 8px 0 !important; }
-            .emby-select-pagination-dot { width: 8px !important; height: 8px !important; border-radius: 50% !important; background: rgba(255,255,255,0.3) !important; border: none !important; cursor: pointer !important; transition: all 0.2s ease !important; padding: 0 !important; }
-            .emby-select-pagination-dot:hover { background: rgba(255,255,255,0.5) !important; transform: scale(1.2) !important; }
-            .emby-select-pagination-dot.active { background: #00a4dc !important; width: 24px !important; border-radius: 4px !important; }
+            /* Individual card */
+            .stc-card {
+                flex: 0 0 auto;
+                width: 200px;
+                height: 50px;
+                background: rgba(255,255,255,0.08);
+                border: 2px solid rgba(255,255,255,0.15);
+                border-radius: 8px;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                color: rgba(255,255,255,0.85);
+                user-select: none;
+            }
             
-            .formatter-display { 
-                margin-bottom: 16px !important; padding: 12px 16px !important; 
-                background: rgba(255,255,255,0.1) !important; border: 1px solid rgba(255,255,255,0.2) !important; 
-                border-radius: 6px !important; text-align: center !important; color: rgba(255,255,255,0.8) !important;
+            .stc-card:hover:not(.stc-placeholder) {
+                background: rgba(255,255,255,0.12);
+                border-color: rgba(255,255,255,0.3);
+                transform: translateY(-2px);
+            }
+            
+            .stc-card.stc-selected {
+                background: #00a4dc !important;
+                border-color: #00a4dc !important;
+                color: #fff !important;
+            }
+            
+            .stc-card.stc-placeholder {
+                opacity: 0.5;
+                cursor: default;
+            }
+            
+            /* Track cards (audio/subtitle) - smaller & compact */
+            .stc-card.stc-track {
+                width: 80px;
+                height: 30px;
+                padding: 8px;
+            }
+            
+            .stc-card-lang {
+                font-size: 14px;
+                font-weight: 700;
+                margin-bottom: 4px;
+            }
+            
+            .stc-card-type {
+                font-size: 11px;
+                opacity: 0.85;
+            }
+            
+            .stc-card-title {
+                font-size: 13px;
+                line-height: 1.3;
+                word-break: break-word;
+            }
+            
+            /* Navigation arrows */
+            .stc-arrow {
+                position: absolute;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: rgba(0,0,0,0.6);
+                border: none;
+                color: #fff;
+                font-size: 24px;
+                cursor: pointer;
+                z-index: 10;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.15s;
+            }
+            
+            .stc-arrow:hover:not(:disabled) {
+                background: rgba(0,0,0,0.8);
+            }
+            
+            .stc-arrow:disabled {
+                opacity: 0.3;
+                cursor: default;
+            }
+            
+            .stc-arrow.stc-arrow-left { left: 0; }
+            .stc-arrow.stc-arrow-right { right: 0; }
+            
+            /* Loading state */
+            .stc-loading {
+                color: rgba(255,255,255,0.6);
+                font-size: 13px;
+                padding: 24px;
+                text-align: center;
+            }
+            
+            /* Format display */
+            .stc-format {
+                margin-bottom: 16px;
+                padding: 12px 16px;
+                background: rgba(255,255,255,0.08);
+                border: 1px solid rgba(255,255,255,0.15);
+                border-radius: 6px;
+                text-align: center;
+                color: rgba(255,255,255,0.8);
+                font-size: 14px;
+            }
+            
+            /* Filename display */
+            .stc-filename {
+                margin-top: 8px;
+                padding: 8px 12px;
+                background: rgba(0,0,0,0.3);
+                border-radius: 4px;
+                color: rgba(255,255,255,0.6);
+                font-size: 12px;
+                text-align: center;
+                font-family: monospace;
+            }
+            
+            /* Separator line after carousels */
+            .stc-separator {
+                margin: 20px 0;
+                height: 1px;
+                background: rgba(255,255,255,0.1);
+                border: none;
             }
         `;
+        
         document.head.appendChild(style);
-    }
-
-    // ============================================
-    // UI CONTROLS
-    // ============================================
-
-    function createArrows(container) {
-        const wrapper = container.parentElement;
-        if (!wrapper || wrapper.querySelector('.emby-select-arrow')) return;
-        console.log('[SelectToCards] createArrows for container', container);
-
-        const leftArrow = document.createElement('button');
-        leftArrow.className = 'emby-select-arrow left';
-        leftArrow.innerHTML = '‹';
-        leftArrow.setAttribute('aria-label', 'Previous');
-        leftArrow.addEventListener('click', () => container.scrollBy({ left: -container.offsetWidth * 0.8, behavior: 'smooth' }));
-
-        const rightArrow = document.createElement('button');
-        rightArrow.className = 'emby-select-arrow right';
-        rightArrow.innerHTML = '›';
-        rightArrow.setAttribute('aria-label', 'Next');
-        rightArrow.addEventListener('click', () => container.scrollBy({ left: container.offsetWidth * 0.8, behavior: 'smooth' }));
-
-        // Update enabled/disabled state based on scroll position
-        const updateArrows = () => {
-            leftArrow.disabled = container.scrollLeft <= 0;
-            rightArrow.disabled = container.scrollLeft >= container.scrollWidth - container.offsetWidth - 1;
-        };
-
-        // Compute the desired vertical position so arrows align to the card center
-        const computeAndSetArrowTop = () => {
-            try {
-                const wrapperRect = wrapper.getBoundingClientRect();
-                // Prefer a visible, non-placeholder card as the anchor
-                let anchor = container.querySelector('.emby-select-card:not(.placeholder)');
-                if (!anchor) anchor = container.querySelector('.emby-select-card');
-
-                if (anchor) {
-                    const cardRect = anchor.getBoundingClientRect();
-                    const cardCenter = (cardRect.top - wrapperRect.top) + (cardRect.height / 2);
-                    const halfArrow = (leftArrow.offsetHeight || 36) / 2;
-                    const topPx = Math.max(0, Math.round(cardCenter - halfArrow));
-                    leftArrow.style.top = topPx + 'px';
-                    rightArrow.style.top = topPx + 'px';
-                } else {
-                    // fallback: center to the container
-                    const cRect = container.getBoundingClientRect();
-                    const center = (cRect.top - wrapperRect.top) + (cRect.height / 2);
-                    const halfArrow = (leftArrow.offsetHeight || 36) / 2;
-                    const topPx = Math.max(0, Math.round(center - halfArrow));
-                    leftArrow.style.top = topPx + 'px';
-                    rightArrow.style.top = topPx + 'px';
-                }
-            } catch (e) { /* ignore measurement errors */ }
-        };
-
-        // Observers/listeners to keep arrows positioned when layout changes
-        container.addEventListener('scroll', throttle(updateArrows, 100));
-        const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(throttle(() => { computeAndSetArrowTop(); updateArrows(); }, 100)) : null;
-        if (ro) ro.observe(container);
-        window.addEventListener('resize', throttle(() => { computeAndSetArrowTop(); updateArrows(); }, 120));
-
-        try {
-            const mo = new MutationObserver(throttle(() => { computeAndSetArrowTop(); updateArrows(); }, 120));
-            mo.observe(container, { childList: true, subtree: true, attributes: true });
-        } catch (e) { /* ignore */ }
-
-        // Insert arrows, then compute initial position after layout
-        wrapper.appendChild(leftArrow);
-        wrapper.appendChild(rightArrow);
-        // give browser a tick to render and populate sizes
-        setTimeout(() => { computeAndSetArrowTop(); updateArrows(); }, 40);
-    }
-    
-    function createPagination(container) {
-        const wrapper = container.parentElement;
-        if (!wrapper || wrapper.querySelector('.emby-select-pagination')) return;
-        
-        const cards = container.querySelectorAll('.emby-select-card:not(.placeholder)');
-        if (cards.length === 0) return;
-        
-        const paginationContainer = document.createElement('div');
-        paginationContainer.className = 'emby-select-pagination';
-        
-        const cardsPerPage = 6;
-        const pageCount = Math.ceil(cards.length / cardsPerPage);
-        
-        for (let i = 0; i < pageCount; i++) {
-            const dot = document.createElement('button');
-            dot.className = 'emby-select-pagination-dot' + (i === 0 ? ' active' : '');
-            dot.setAttribute('aria-label', `Page ${i + 1}`);
-            dot.addEventListener('click', () => {
-                const cardWidth = cards[0].offsetWidth + 8;
-                container.scrollTo({ left: i * cardsPerPage * cardWidth, behavior: 'smooth' });
-                paginationContainer.querySelectorAll('.emby-select-pagination-dot').forEach((d, idx) => {
-                    d.classList.toggle('active', idx === i);
-                });
-            });
-            paginationContainer.appendChild(dot);
-        }
-        
-        container.addEventListener('scroll', throttle(() => {
-            const cardWidth = cards[0].offsetWidth + 8;
-            const currentPage = Math.round(container.scrollLeft / (cardsPerPage * cardWidth));
-            paginationContainer.querySelectorAll('.emby-select-pagination-dot').forEach((d, idx) => {
-                d.classList.toggle('active', idx === currentPage);
-            });
-        }, 100));
-        
-        wrapper.appendChild(paginationContainer);
-    }
-
-    function updateFormatterDisplay(select, optionValue) {
-        const form = select.closest('form.trackSelections');
-        if (!form) return;
-        
-        let formatterDiv = form.querySelector('.formatter-display');
-        if (!formatterDiv) {
-            formatterDiv = document.createElement('div');
-            formatterDiv.className = 'formatter-display';
-            const firstWrapper = form.querySelector('.emby-select-wrapper');
-            if (firstWrapper) form.insertBefore(formatterDiv, firstWrapper);
-            else form.appendChild(formatterDiv);
-        }
-        
-        const selectedOption = optionValue ? Array.from(select.options).find(o => o.value === optionValue) : null;
-        if (selectedOption) {
-            const cutIndex = selectedOption.textContent.indexOf('(cut)');
-            formatterDiv.textContent = cutIndex !== -1 ? selectedOption.textContent.substring(0, cutIndex).trim() : 'No format information available';
-        } else {
-            formatterDiv.textContent = 'Loading format information...';
-        }
     }
 
     // ============================================
     // CARD CREATION
     // ============================================
 
-    function createDummyCard(cardType) {
+    function createCard(option, type, select) {
         const card = document.createElement('div');
-        card.className = 'emby-select-card placeholder ' + cardType;
-        // Use a neutral, text-based placeholder instead of an emoji
-        card.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:14px;color:rgba(255,255,255,0.6);">No tracks</div>';
+        const isTrack = type === 'audio' || type === 'subtitle';
+        
+        card.className = `stc-card ${isTrack ? 'stc-track' : ''}`;
+        card.dataset.value = option.value;
+        card.tabIndex = 0;
+        
+        if (option.selected) {
+            card.classList.add('stc-selected');
+        }
+        
+        if (option.disabled) {
+            card.style.opacity = '0.4';
+            card.style.cursor = 'not-allowed';
+            card.tabIndex = -1;
+        }
+        
+        // Build card content
+        if (isTrack && option._meta) {
+            const { lang, type: trackType } = formatStreamTitle(option._meta, type === 'audio');
+            card.innerHTML = `
+                <div class="stc-card-lang">${lang}</div>
+                <div class="stc-card-type">${trackType}</div>
+            `;
+        } else {
+            // Version cards - show compact title
+            const text = option.textContent || option.value;
+            const cleanText = text.includes('(cut)') ? text.split('(cut)')[1].trim() : text;
+            card.innerHTML = `<div class="stc-card-title">${cleanText}</div>`;
+        }
+        
+        // Handle click
+        if (!option.disabled) {
+            card.addEventListener('click', () => selectCard(select, option.value, type));
+        }
+        
+        return card;
+    }
+
+    function createPlaceholderCard(message = 'No tracks') {
+        const card = document.createElement('div');
+        card.className = 'stc-card stc-track stc-placeholder';
+        card.innerHTML = `<div style="font-size:12px;color:rgba(255,255,255,0.5);">${message}</div>`;
         card.tabIndex = -1;
         return card;
     }
 
-    function createCard(option, select, container) {
-        const card = document.createElement('div');
-        let cardClass = 'emby-select-card';
-        if (select.classList.contains('selectAudio')) cardClass += ' audio-card';
-        else if (select.classList.contains('selectSubtitles')) cardClass += ' subtitle-card';
+    function createArrows(wrapper, cardsContainer) {
+        const leftArrow = document.createElement('button');
+        leftArrow.className = 'stc-arrow stc-arrow-left';
+        leftArrow.innerHTML = '‹';
+        leftArrow.setAttribute('aria-label', 'Previous');
         
-        card.className = cardClass + (option.selected ? ' selected' : '') + (option.disabled ? ' disabled' : '');
-        card.tabIndex = option.disabled ? -1 : 0;
-        card.dataset.value = option.value;
-
-        // Audio/Subtitle cards show two lines: language (big) and type (small)
-        if (card.classList.contains('audio-card') || card.classList.contains('subtitle-card')) {
-            const top = document.createElement('div');
-            top.className = 'card-top';
-            top.style.cssText = 'font-weight:700;font-size:14px;line-height:1;padding:0;margin:0;text-align:center;';
-            const bottom = document.createElement('div');
-            bottom.className = 'card-bottom';
-            bottom.style.cssText = 'font-size:11px;opacity:0.9;margin-top:6px;text-align:center;';
-
-            // Try to parse display-friendly language and type from option text/value
-            // option._meta can be attached by populate code; fallback to option.textContent/value
-            const meta = option._meta || {};
-            const lang = (meta.displayLanguage || option.textContent || option.value || '').toString().trim();
-            const type = (meta.type || meta.codec || '').toString().trim();
-
-            top.textContent = (lang || '').toUpperCase();
-            bottom.textContent = type || '';
-            card.appendChild(top);
-            card.appendChild(bottom);
-        } else {
-            const textSpan = document.createElement('span');
-            const fullText = option.textContent || option.value;
-            const cutIndex = fullText.indexOf('(cut)');
-            textSpan.textContent = cutIndex !== -1 ? fullText.substring(cutIndex + 5).trim() : fullText;
-            textSpan.style.cssText = 'display:block;width:100%;word-wrap:break-word;white-space:normal;line-height:1.3;padding:4px;';
-            card.appendChild(textSpan);
-        }
-
-        card.addEventListener('click', () => !option.disabled && handleSelection(select, option.value));
+        const rightArrow = document.createElement('button');
+        rightArrow.className = 'stc-arrow stc-arrow-right';
+        rightArrow.innerHTML = '›';
+        rightArrow.setAttribute('aria-label', 'Next');
         
-        card.addEventListener('keydown', ev => {
-            if (option.disabled) return;
-            if (['Enter', ' '].includes(ev.key)) {
-                ev.preventDefault();
-                handleSelection(select, option.value);
-            } else if (['ArrowRight', 'ArrowDown'].includes(ev.key)) {
-                ev.preventDefault();
-                const cards = Array.from(container.querySelectorAll('.emby-select-card:not(.disabled):not(.placeholder)'));
-                const idx = cards.indexOf(card);
-                if (idx !== -1 && idx + 1 < cards.length) cards[idx + 1].focus();
-            } else if (['ArrowLeft', 'ArrowUp'].includes(ev.key)) {
-                ev.preventDefault();
-                const cards = Array.from(container.querySelectorAll('.emby-select-card:not(.disabled):not(.placeholder)'));
-                const idx = cards.indexOf(card);
-                if (idx > 0) cards[idx - 1].focus();
-            }
+        const updateArrows = () => {
+            leftArrow.disabled = cardsContainer.scrollLeft <= 0;
+            rightArrow.disabled = cardsContainer.scrollLeft >= cardsContainer.scrollWidth - cardsContainer.offsetWidth - 1;
+        };
+        
+        leftArrow.addEventListener('click', () => {
+            cardsContainer.scrollBy({ left: -300, behavior: 'smooth' });
+            setTimeout(updateArrows, 100);
         });
-
-        return card;
-    }
-
-    // ============================================
-    // CARD POPULATION
-    // ============================================
-
-    function populateCards(select) {
-        const container = select._embyCardsContainer;
-        if (!container || select.options.length === 0) return;
-
-        if (select._cardsPopulated) return;
-        select._cardsPopulated = true;
-
-        container.innerHTML = '';
-
-        Array.from(select.options).forEach(option => {
-            container.appendChild(createCard(option, select, container));
+        
+        rightArrow.addEventListener('click', () => {
+            cardsContainer.scrollBy({ left: 300, behavior: 'smooth' });
+            setTimeout(updateArrows, 100);
         });
-
-        const wrapper = container.parentElement;
-        if (wrapper) {
-            wrapper.querySelectorAll('.emby-select-arrow').forEach(arrow => arrow.remove());
-            wrapper.querySelectorAll('.emby-select-pagination').forEach(pag => pag.remove());
-        }
-
-        setTimeout(() => {
-            createArrows(container);
-            createPagination(container);
-            const selectedCard = container.querySelector('.emby-select-card.selected');
-            if (selectedCard && select.classList.contains('selectSource')) {
-                updateFormatterDisplay(select, selectedCard.dataset.value);
-            }
-            
-            // Auto-trigger selection for the first version to load audio/subtitle
-            if (select.classList.contains('selectSource') && selectedCard) {
-                console.log('[SelectToCards] Auto-triggering stream fetch for first version');
-                setTimeout(() => {
-                    handleSelection(select, selectedCard.dataset.value);
-                }, 200);
-            }
-        }, 0);
+        
+        cardsContainer.addEventListener('scroll', debounce(updateArrows, 100));
+        
+        wrapper.appendChild(leftArrow);
+        wrapper.appendChild(rightArrow);
+        
+        setTimeout(updateArrows, 100);
     }
 
     // ============================================
     // SELECTION HANDLING
     // ============================================
 
-    function handleSelection(select, value) {
-        console.log('[SelectToCards.handleSelection] Called for', select.className, 'with value:', value);
+    function selectCard(select, value, type) {
+        console.log('[SelectToCards] Selecting', type, 'value:', value);
         
-        select._isUserAction = true;
-        Array.from(select.options).forEach(o => o.selected = o.value === value);
-        select._isUserAction = false;
+        // Update select element
+        Array.from(select.options).forEach(opt => {
+            opt.selected = opt.value === value;
+        });
         
-        const container = select._embyCardsContainer;
-        if (container) {
-            Array.from(container.children).forEach(card => {
-                card.classList.toggle('selected', card.dataset.value === value);
+        // Update card UI
+        const wrapper = select._stcWrapper;
+        if (wrapper) {
+            wrapper.querySelectorAll('.stc-card').forEach(card => {
+                card.classList.toggle('stc-selected', card.dataset.value === value);
             });
-            if (select.classList.contains('selectSource')) {
-                updateFormatterDisplay(select, value);
-                setTimeout(async () => {
-                    const form = select.closest('form.trackSelections');
-                    if (form) {
-                        console.log('[SelectToCards] Clearing audio/subtitle selects and fetching streams...');
-                        
-                        // Clear options from audio/subtitle selects
-                        form.querySelectorAll('select.detailTrackSelect:not(.selectSource)').forEach(s => {
-                            s.innerHTML = '';
-                            s._cardsPopulated = false;
-                            if (s._embyCardsContainer) {
-                                const cardType = s.classList.contains('selectAudio') ? 'audio-card' : 'subtitle-card';
-                                s._embyCardsContainer.innerHTML = '';
-                                s._embyCardsContainer.appendChild(createDummyCard(cardType));
-                            }
-                        });
-
-                        // Probe streams for selected media source
-                        if (value) {
-                            try {
-                                let itemId = null;
-                                
-                                // Try multiple sources to find itemId
-                                const itemInput = form.querySelector('[name*="itemId"], [name*="Id"]');
-                                if (itemInput) itemId = itemInput.value;
-                                
-                                if (!itemId && window.__currentPlaybackItemId) itemId = window.__currentPlaybackItemId;
-                                if (!itemId && window.__itemId) itemId = window.__itemId;
-                                if (!itemId && window.__mediaInfo) itemId = window.__mediaInfo.Id;
-                                
-                                // Try to get from the select element's options
-                                if (!itemId) {
-                                    const selectedOption = select.options[select.selectedIndex];
-                                    if (selectedOption && selectedOption.getAttribute('data-id')) {
-                                        itemId = selectedOption.getAttribute('data-id');
-                                    }
-                                }
-                                
-                                // Try to extract from the value itself (mediaSourceId often contains itemId)
-                                if (!itemId && value) {
-                                    // Check if value looks like a GUID
-                                    if (value.match(/^[a-f0-9]{32}$/i)) {
-                                        itemId = value;
-                                    }
-                                }
-                                
-                                // Last resort: try to find from DOM context
-                                if (!itemId) {
-                                    const playbackManager = form.closest('[data-itemid]');
-                                    if (playbackManager) itemId = playbackManager.getAttribute('data-itemid');
-                                }
-                                
-                                console.log('[SelectToCards] Detected itemId:', itemId, 'mediaSourceId:', value);
-                                
-                                if (!itemId) {
-                                    console.error('[SelectToCards] Could not determine itemId!');
-                                    console.log('[SelectToCards] Available context:', {
-                                        formInputs: Array.from(form.querySelectorAll('input, select')).map(i => ({name: i.name, value: i.value?.substring(0, 50)})),
-                                        windowVars: { __itemId: window.__itemId, __mediaInfo: window.__mediaInfo }
-                                    });
-                                    return;
-                                }
-                                
-                                console.log('[SelectToCards] Probing streams for itemId:', itemId, 'mediaSourceId:', value);
-                                const mediaSource = await probeItemStreams(itemId, value);
-                                
-                                if (mediaSource) {
-                                    console.log('[SelectToCards] Got mediaSource, extracting streams...');
-                                    const { audio, subs } = extractStreams(mediaSource);
-                                    
-                                    console.log('[SelectToCards] Extracted', audio.length, 'audio and', subs.length, 'subtitle tracks');
-                                    
-                                    const audioSel = form.querySelector('select.selectAudio');
-                                    if (audioSel && audio.length > 0) {
-                                        console.log('[SelectToCards] Populating', audio.length, 'audio tracks');
-                                        audio.forEach(t => {
-                                            const opt = document.createElement('option');
-                                            opt.value = String(t.index);
-                                            opt.textContent = t.title;
-                                            // Attach meta for card rendering (displayLanguage and type)
-                                            // Prefer the raw language code (t.language) for compact display like 'ENG'.
-                                            opt._meta = { displayLanguage: (t.language || t.displayLanguage || t.title), type: (t.type || t.codec), language: t.language };
-                                            audioSel.appendChild(opt);
-                                        });
-                                        audioSel.disabled = false;
-                                        populateCards(audioSel);
-                                    } else {
-                                        console.warn('[SelectToCards] No audio tracks found');
-                                    }
-                                    
-                                    const subSel = form.querySelector('select.selectSubtitles');
-                                    if (subSel && subs.length > 0) {
-                                        console.log('[SelectToCards] Populating', subs.length, 'subtitle tracks');
-                                        subs.forEach(t => {
-                                            const opt = document.createElement('option');
-                                            opt.value = String(t.index);
-                                            opt.textContent = t.title;
-                                            opt._meta = { displayLanguage: (t.language || t.displayLanguage || t.title), type: (t.type || t.codec), language: t.language };
-                                            subSel.appendChild(opt);
-                                        });
-                                        subSel.disabled = false;
-                                        populateCards(subSel);
-                                    } else {
-                                        console.warn('[SelectToCards] No subtitle tracks found');
-                                    }
-                                } else {
-                                    console.error('[SelectToCards] Failed to get mediaSource');
-                                }
-                            } catch (err) {
-                                console.error('[SelectToCards.handleSelection] Error:', err);
-                            }
-                        }
-                    }
-                }, 100);
+            
+            // Update filename display if version select
+            if (type === 'version') {
+                const selectedOption = Array.from(select.options).find(opt => opt.value === value);
+                const filenameDiv = wrapper.querySelector('.stc-filename');
+                if (selectedOption && filenameDiv) {
+                    filenameDiv.textContent = selectedOption.textContent;
+                }
             }
         }
         
-        emitEvent(select, 'input');
+        // Emit change events
         emitEvent(select, 'change');
+        emitEvent(select, 'input');
+        
+        // If version changed, load new audio/subtitle tracks
+        if (type === 'version') {
+            loadTracksForVersion(select, value);
+        }
+    }
+
+    async function loadTracksForVersion(versionSelect, mediaSourceId) {
+        console.log('[SelectToCards] Loading tracks for version:', mediaSourceId);
+        
+        const form = versionSelect.closest('form.trackSelections');
+        if (!form) return;
+        
+        const audioSelect = form.querySelector('select.selectAudio');
+        const subtitleSelect = form.querySelector('select.selectSubtitles');
+        
+        // Clear existing tracks immediately
+        if (audioSelect) {
+            audioSelect.innerHTML = '';
+            if (audioSelect._stcCards) {
+                audioSelect._stcCards.innerHTML = '<div class="stc-loading">Loading audio tracks...</div>';
+            }
+        }
+        
+        if (subtitleSelect) {
+            subtitleSelect.innerHTML = '';
+            if (subtitleSelect._stcCards) {
+                subtitleSelect._stcCards.innerHTML = '<div class="stc-loading">Loading subtitles...</div>';
+            }
+        }
+        
+        // Try to get itemId if we don't have it
+        if (!currentItemId) {
+            console.log('[SelectToCards] No currentItemId, attempting to capture...');
+            captureItemId();
+        }
+        
+        // Fetch streams
+        if (!currentItemId) {
+            console.warn('[SelectToCards] No itemId available after capture attempt');
+            if (audioSelect?._stcCards) {
+                audioSelect._stcCards.innerHTML = '';
+                audioSelect._stcCards.appendChild(createPlaceholderCard('No item ID'));
+            }
+            if (subtitleSelect?._stcCards) {
+                subtitleSelect._stcCards.innerHTML = '';
+                subtitleSelect._stcCards.appendChild(createPlaceholderCard('No item ID'));
+            }
+            return;
+        }
+        
+        console.log('[SelectToCards] Fetching streams with itemId:', currentItemId, 'mediaSourceId:', mediaSourceId);
+        const streams = await fetchStreams(currentItemId, mediaSourceId);
+        
+        if (!streams) {
+            console.error('[SelectToCards] Failed to fetch streams');
+            if (audioSelect?._stcCards) {
+                audioSelect._stcCards.innerHTML = '';
+                audioSelect._stcCards.appendChild(createPlaceholderCard('Error loading'));
+            }
+            if (subtitleSelect?._stcCards) {
+                subtitleSelect._stcCards.innerHTML = '';
+                subtitleSelect._stcCards.appendChild(createPlaceholderCard('Error loading'));
+            }
+            return;
+        }
+        
+        // Populate audio tracks
+        if (audioSelect && streams.audio && streams.audio.length > 0) {
+            streams.audio.forEach((track, idx) => {
+                const option = document.createElement('option');
+                option.value = String(track.index);
+                option.textContent = track.title;
+                option._meta = track;
+                if (idx === 0) option.selected = true;
+                audioSelect.appendChild(option);
+            });
+            populateCarousel(audioSelect, 'audio');
+        } else if (audioSelect?._stcCards) {
+            audioSelect._stcCards.innerHTML = '';
+            audioSelect._stcCards.appendChild(createPlaceholderCard('No audio'));
+        }
+        
+        // Populate subtitle tracks
+        if (subtitleSelect && streams.subs && streams.subs.length > 0) {
+            streams.subs.forEach((track, idx) => {
+                const option = document.createElement('option');
+                option.value = String(track.index);
+                option.textContent = track.title;
+                option._meta = track;
+                if (idx === 0) option.selected = true;
+                subtitleSelect.appendChild(option);
+            });
+            populateCarousel(subtitleSelect, 'subtitle');
+        } else if (subtitleSelect?._stcCards) {
+            subtitleSelect._stcCards.innerHTML = '';
+            subtitleSelect._stcCards.appendChild(createPlaceholderCard('No subtitles'));
+        }
+    }
+
+    // ============================================
+    // CAROUSEL CREATION
+    // ============================================
+
+    function populateCarousel(select, type) {
+        if (!select) return;
+        
+        // Get or create wrapper
+        let wrapper = select._stcWrapper;
+        let cardsContainer = select._stcCards;
+        
+        if (!wrapper) {
+            const label = getLabel(select, type);
+            
+            wrapper = document.createElement('div');
+            wrapper.className = 'stc-wrapper';
+            
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'stc-label';
+            labelDiv.textContent = label;
+            
+            cardsContainer = document.createElement('div');
+            cardsContainer.className = 'stc-cards';
+            
+            wrapper.appendChild(labelDiv);
+            wrapper.appendChild(cardsContainer);
+            
+            // Insert after the select's container
+            const selectContainer = select.closest('.selectContainer');
+            if (selectContainer) {
+                selectContainer.parentNode.insertBefore(wrapper, selectContainer.nextSibling);
+            } else {
+                const form = select.closest('form');
+                if (form) form.appendChild(wrapper);
+            }
+            
+            select._stcWrapper = wrapper;
+            select._stcCards = cardsContainer;
+            
+            createArrows(wrapper, cardsContainer);
+        }
+        
+        // Clear and populate cards
+        cardsContainer.innerHTML = '';
+        
+        if (select.options.length === 0) {
+            cardsContainer.appendChild(createPlaceholderCard());
+            return;
+        }
+        
+        Array.from(select.options).forEach(option => {
+            cardsContainer.appendChild(createCard(option, type, select));
+        });
+        
+        // Add filename display if version select
+        if (type === 'version' && select.options.length > 0) {
+            const selectedOption = Array.from(select.options).find(opt => opt.selected) || select.options[0];
+            if (selectedOption && selectedOption.textContent) {
+                // Remove existing filename if any
+                const existingFilename = wrapper.querySelector('.stc-filename');
+                if (existingFilename) {
+                    existingFilename.remove();
+                }
+                
+                const filenameDiv = document.createElement('div');
+                filenameDiv.className = 'stc-filename';
+                filenameDiv.textContent = selectedOption.textContent;
+                wrapper.appendChild(filenameDiv);
+            }
+        }
+        
+        // Add separator line after each carousel
+        const existingSeparator = wrapper.nextElementSibling;
+        if (!existingSeparator || !existingSeparator.classList.contains('stc-separator')) {
+            const separator = document.createElement('hr');
+            separator.className = 'stc-separator';
+            wrapper.parentNode.insertBefore(separator, wrapper.nextSibling);
+        }
+        
+        // Auto-scroll to selected card
+        setTimeout(() => {
+            const selectedCard = cardsContainer.querySelector('.stc-selected');
+            if (selectedCard) {
+                selectedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }, 100);
+    }
+
+    function getLabel(select, type) {
+        // Try to get label from previous sibling
+        const prevSibling = select.previousElementSibling;
+        if (prevSibling && prevSibling.textContent) {
+            return prevSibling.textContent.trim();
+        }
+        
+        // Fallback to type-based labels
+        if (select.classList.contains('selectSource')) return 'Version';
+        if (select.classList.contains('selectAudio')) return 'Audio Track';
+        if (select.classList.contains('selectSubtitles')) return 'Subtitles';
+        
+        return type.charAt(0).toUpperCase() + type.slice(1);
     }
 
     // ============================================
     // INITIALIZATION
     // ============================================
 
-    function initSelects() {
+    function captureItemId() {
+        // Try multiple sources to get the current item ID
+        
+        // 1. From URL
+        const urlMatch = window.location.href.match(/[?&]id=([a-f0-9-]+)/i);
+        if (urlMatch) {
+            currentItemId = urlMatch[1].replace(/-/g, '');
+            console.log('[SelectToCards] Captured itemId from URL:', currentItemId);
+            return;
+        }
+        
+        // 2. From form
         const form = document.querySelector('form.trackSelections');
-        if (!form) return;
-        // Ensure plugin styles are injected before manipulating the DOM
-        try { ensureStyle(); } catch (e) { console.warn('[SelectToCards] ensureStyle failed', e); }
-
-        console.log('[SelectToCards] Initializing track selections (idempotent)');
-
-        // DIAGNOSTIC: Log all select elements briefly
-        try {
-            const allSelects = form.querySelectorAll('select');
-            console.log('[SelectToCards] Found', allSelects.length, 'select elements');
-        } catch (e) { /* ignore */ }
-
-        // Try to capture itemId from form context (best-effort)
-        try {
-            const itemIdInput = form.querySelector('input[name*="itemId"], input[name*="Id"], input[type="hidden"]');
-            if (itemIdInput?.value) window.__currentPlaybackItemId = itemIdInput.value;
-            const itemIdAttr = form.getAttribute('data-itemid') || form.closest('[data-itemid]')?.getAttribute('data-itemid');
-            if (itemIdAttr && !window.__currentPlaybackItemId) window.__currentPlaybackItemId = itemIdAttr;
-            if (!window.__currentPlaybackItemId) {
-                const urlMatch = document.location.href.match(/[?&]id=([a-f0-9]+)/i);
-                if (urlMatch) window.__currentPlaybackItemId = urlMatch[1];
-            }
-            if (window.__currentPlaybackItemId) console.log('[SelectToCards] Captured itemId:', window.__currentPlaybackItemId);
-        } catch (e) { /* ignore */ }
-
-        // Hide original select containers
-        form.querySelectorAll('.selectContainer').forEach(c => c.style.display = 'none');
-
-        const selects = form.querySelectorAll('select.detailTrackSelect');
-        if (!selects || selects.length === 0) return;
-
-        selects.forEach((select, idx) => {
-            try {
-                // Skip if we've already attached to this select
-                if (select._embyCardsContainer) return;
-
-                // Skip selectVideo - we don't want a Video Quality carousel
-                if (select.classList.contains('selectVideo')) return;
-
-                monitorSelectAccess(select);
-
-                // Determine label
-                let label = 'Unknown';
-                if (select.classList.contains('selectSource')) label = 'Version';
-                else if (select.classList.contains('selectVideo')) label = 'Video Quality';
-                else if (select.classList.contains('selectAudio')) label = 'Audio';
-                else if (select.classList.contains('selectSubtitles')) label = 'Subtitles';
-                if (select.previousElementSibling?.textContent) label = select.previousElementSibling.textContent;
-
-                const labelDiv = document.createElement('div');
-                labelDiv.className = 'carousel-label';
-                labelDiv.textContent = label;
-
-                const wrapper = document.createElement('div');
-                wrapper.className = 'emby-select-wrapper';
-
-                const cardsContainer = document.createElement('div');
-                cardsContainer.className = 'emby-select-cards';
-                cardsContainer.setAttribute('role', 'listbox');
-                cardsContainer.setAttribute('aria-label', label);
-                // Add a lightweight loading indicator while options populate
-                const loadingEl = document.createElement('div');
-                loadingEl.className = 'emby-select-loading';
-                loadingEl.textContent = 'Loading…';
-                loadingEl.style.cssText = 'color:rgba(255,255,255,0.6);font-size:13px;padding:12px;';
-                cardsContainer.appendChild(loadingEl);
-
-                wrapper.appendChild(cardsContainer);
-                select._embyCardsContainer = cardsContainer;
-
-                const parent = select.closest('.selectContainer')?.parentElement || form;
-                parent.appendChild(labelDiv);
-                parent.appendChild(wrapper);
-
-                // Wait for options (best-effort) and then populate
-                (async () => {
-                    let ready = await waitFor(() => select.options && select.options.length > 0, 6000, 100);
-                    if (!ready) {
-                        // Try a few short backoff retries before giving up (covers slow network / probe delays)
-                        const backoffs = [200, 600, 1800];
-                        for (const b of backoffs) {
-                            await new Promise(r => setTimeout(r, b));
-                            if (select.options && select.options.length > 0) { ready = true; break; }
-                        }
-                    }
-
-                    // Remove loading indicator
-                    try { if (loadingEl && loadingEl.parentElement) loadingEl.parentElement.removeChild(loadingEl); } catch (e) {}
-
-                    if (!ready) {
-                        console.warn('[SelectToCards] Options did not populate in time for select', select.className);
-                        // fallback: show a dummy card for audio/subtitles
-                        if (!select.classList.contains('selectSource') && !select.classList.contains('selectVideo')) {
-                            const cardType = select.classList.contains('selectAudio') ? 'audio-card' : 'subtitle-card';
-                            cardsContainer.appendChild(createDummyCard(cardType));
-                        }
-                        return;
-                    }
-
-                    console.log('[SelectToCards] Options populated for', label, select.options.length);
-                    if (select.classList.contains('selectSource') || select.classList.contains('selectVideo')) {
-                        populateCards(select);
-                    } else {
-                        const cardType = select.classList.contains('selectAudio') ? 'audio-card' : 'subtitle-card';
-                        cardsContainer.appendChild(createDummyCard(cardType));
-                    }
-                })();
-            } catch (e) { console.warn('[SelectToCards] init select error', e); }
-        });
-
-        // Observe the form for new selects/options (only once)
-        try {
-            if (!form._selectCardsObserver) {
-                const formObserver = new MutationObserver(mutations => {
-                    for (const m of mutations) {
-                        if (m.type === 'childList' || m.type === 'subtree' || m.type === 'attributes') {
-                            const selects = document.querySelectorAll('form.trackSelections select.detailTrackSelect');
-                            for (const s of selects) if (!s._embyCardsContainer) initSelects();
-                        }
-                    }
-                });
-                formObserver.observe(form, { childList: true, subtree: true, attributes: true });
-                form._selectCardsObserver = formObserver;
-            }
-        } catch (e) { console.warn('[SelectToCards] form observer failed', e); }
-
-        console.log('[SelectToCards] Initialization scheduled for', selects.length, 'select(s)');
-    }
-
-    // Start monitoring for playback UI
-    const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) {
-                if (node.nodeType !== 1) continue;
-
-                // If a trackSelections form is added anywhere, init
-                try {
-                    if (node.matches && node.matches('form.trackSelections')) {
-                        initSelects();
-                        continue;
-                    }
-                } catch (e) { /* ignore match errors */ }
-
-                // If a subtree contains the form, init
-                try {
-                    if (node.querySelector) {
-                        const form = node.querySelector('form.trackSelections');
-                        if (form) { initSelects(); continue; }
-
-                        // If the details modal overlay is added or nested, schedule init
-                        if ((node.matches && node.matches('#item-detail-modal-overlay')) || node.querySelector('#item-detail-modal-overlay')) {
-                            setTimeout(initSelects, 80);
-                            continue;
-                        }
-                    }
-                } catch (e) { /* ignore */ }
+        if (form) {
+            const itemIdInput = form.querySelector('input[name*="itemId"], input[name*="Id"]');
+            if (itemIdInput?.value) {
+                currentItemId = itemIdInput.value.replace(/-/g, '');
+                console.log('[SelectToCards] Captured itemId from form input:', currentItemId);
+                return;
             }
         }
-    });
+        
+        // 3. From global window variables
+        if (window.__currentPlaybackItemId) {
+            currentItemId = window.__currentPlaybackItemId;
+            console.log('[SelectToCards] Using window.__currentPlaybackItemId:', currentItemId);
+            return;
+        }
+        
+        console.warn('[SelectToCards] Could not capture itemId');
+    }
 
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    // Also listen for the details modal open event (used by our DetailsModal) and trigger init
-    try {
-        document.addEventListener('openDetailsModal', () => setTimeout(initSelects, 80));
-    } catch (e) { /* ignore */ }
-
-    // If modal overlay already exists, observe its class changes to detect when it's opened
-    try {
-        const overlay = document.querySelector('#item-detail-modal-overlay');
-        if (overlay && window.MutationObserver) {
-            const overlayObs = new MutationObserver(muts => {
-                for (const m of muts) {
-                    if (m.type === 'attributes' && overlay.classList.contains('open')) {
-                        setTimeout(initSelects, 80);
-                        break;
+    function initializeForm() {
+        const form = document.querySelector('form.trackSelections');
+        if (!form || form._stcInitialized) return;
+        
+        console.log('[SelectToCards] Initializing form');
+        form._stcInitialized = true;
+        
+        captureItemId();
+        
+        // Find all select elements (but skip selectVideo)
+        const selects = Array.from(form.querySelectorAll('select.detailTrackSelect'))
+            .filter(sel => !sel.classList.contains('selectVideo'));
+        
+        if (selects.length === 0) {
+            console.warn('[SelectToCards] No select elements found');
+            return;
+        }
+        
+        console.log('[SelectToCards] Found', selects.length, 'select elements');
+        
+        // Process each select
+        selects.forEach(select => {
+            let type = 'unknown';
+            if (select.classList.contains('selectSource')) type = 'version';
+            else if (select.classList.contains('selectAudio')) type = 'audio';
+            else if (select.classList.contains('selectSubtitles')) type = 'subtitle';
+            
+            console.log('[SelectToCards] Processing select:', type, 'options:', select.options.length);
+            
+            // Watch for options being added dynamically
+            const selectObserver = new MutationObserver(() => {
+                if (select.options.length > 0 && !select._stcCardsPopulated) {
+                    console.log('[SelectToCards] Options added to', type, 'select, populating carousel');
+                    select._stcCardsPopulated = true;
+                    populateCarousel(select, type);
+                    
+                    if (type === 'version') {
+                        const selectedOption = Array.from(select.options).find(opt => opt.selected);
+                        if (selectedOption) {
+                            setTimeout(() => {
+                                loadTracksForVersion(select, selectedOption.value);
+                            }, 100);
+                        }
                     }
                 }
             });
-            overlayObs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
-        }
-    } catch (e) { /* ignore */ }
-    
-    // CRITICAL: Hook into ApiClient to capture the itemId from API calls
-    if (window.ApiClient && window.ApiClient.ajax) {
-        const originalAjax = window.ApiClient.ajax;
-        window.ApiClient.ajax = function(options) {
-            try {
-                if (options && options.url && options.url.includes('/Items/')) {
+            
+            selectObserver.observe(select, { childList: true });
+            
+            // For version select, populate immediately if options exist OR wait for them
+            if (type === 'version') {
+                if (select.options.length > 0) {
+                    console.log('[SelectToCards] Version has options, populating now');
+                    select._stcCardsPopulated = true;
+                    populateCarousel(select, type);
+                    
+                    // Auto-load tracks for the first selected version
+                    const selectedOption = Array.from(select.options).find(opt => opt.selected);
+                    if (selectedOption) {
+                        setTimeout(() => {
+                            loadTracksForVersion(select, selectedOption.value);
+                        }, 100);
+                    }
+                } else {
+                    console.log('[SelectToCards] Version select waiting for options (observer active)...');
+                }
+            }
+            // For audio/subtitle, create empty carousel with placeholder
+            else if (type === 'audio' || type === 'subtitle') {
+                populateCarousel(select, type);
+            }
+        });
+    }
+
+    // ============================================
+    // OBSERVERS & HOOKS
+    // ============================================
+
+    function setupObservers() {
+        // Watch for form additions
+        const observer = new MutationObserver(mutations => {
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType !== 1) continue;
+                    
+                    if (node.matches?.('form.trackSelections') || node.querySelector?.('form.trackSelections')) {
+                        setTimeout(initializeForm, 50);
+                    }
+                }
+            }
+        });
+        
+        observer.observe(document.body, { childList: true, subtree: true });
+        
+        // Also check on modal open events
+        document.addEventListener('openDetailsModal', () => {
+            setTimeout(initializeForm, 100);
+        });
+        
+        // Clear cache when navigating away (detect page changes)
+        let lastUrl = window.location.href;
+        const urlCheckInterval = setInterval(() => {
+            const currentUrl = window.location.href;
+            if (currentUrl !== lastUrl) {
+                // Only log if we actually had a cache to clear
+                if (streamCache.size > 0) {
+                    console.log('[SelectToCards] URL changed, clearing cache');
+                }
+                clearStreamCache();
+                lastUrl = currentUrl;
+            }
+        }, 2000); // Check every 2 seconds instead of 1
+        
+        // Listen for player stop/exit events
+        document.addEventListener('playbackstop', () => {
+            console.log('[SelectToCards] Playback stopped, clearing cache');
+            clearStreamCache();
+        });
+        
+        document.addEventListener('playbackerror', () => {
+            console.log('[SelectToCards] Playback error, clearing cache');
+            clearStreamCache();
+        });
+        
+        // Watch for modal/dialog closures (when user exits playback UI)
+        const modalObserver = new MutationObserver(mutations => {
+            for (const mutation of mutations) {
+                for (const node of mutation.removedNodes) {
+                    if (node.nodeType !== 1) continue;
+                    
+                    // If the details modal or player UI is removed, clear cache
+                    if (node.id === 'item-detail-modal-overlay' || 
+                        node.classList?.contains('videoPlayerContainer') ||
+                        node.querySelector?.('form.trackSelections')) {
+                        console.log('[SelectToCards] Player UI removed, clearing cache');
+                        clearStreamCache();
+                    }
+                }
+            }
+        });
+        
+        modalObserver.observe(document.body, { childList: true, subtree: true });
+        
+        // Watch for API calls to capture itemId
+        if (window.ApiClient?.ajax) {
+            const originalAjax = window.ApiClient.ajax;
+            window.ApiClient.ajax = function(options) {
+                // Try to extract itemId from API calls
+                if (options?.url) {
                     const match = options.url.match(/\/Items\/([a-f0-9-]+)/i);
-                    if (match && match[1]) {
+                    if (match) {
                         const extractedId = match[1].replace(/-/g, '');
                         if (extractedId.length === 32) {
-                            window.__currentPlaybackItemId = extractedId;
-                            console.log('[SelectToCards] Intercepted itemId from API call:', extractedId);
+                            // If itemId changed, clear cache
+                            if (currentItemId && currentItemId !== extractedId) {
+                                console.log('[SelectToCards] Item changed, clearing cache');
+                                clearStreamCache();
+                            }
+                            currentItemId = extractedId;
+                            console.log('[SelectToCards] Intercepted itemId from API:', currentItemId);
                         }
                     }
                 }
-            } catch (e) { /* ignore */ }
-
-            const res = originalAjax.apply(this, arguments);
-
-            try {
-                Promise.resolve(res).then(() => {
-                    try {
-                        const url = options && options.url ? options.url : '';
-                        if (url && (/\/Items\/|Playback|PlaybackInfo|Sessions\/PlaybackInfo/i).test(url)) {
-                            setTimeout(() => { try { initSelects(); } catch (e) {} }, 120);
-                        }
-                    } catch (e) { /* ignore */ }
-                }).catch(() => {});
-            } catch (e) { /* ignore */ }
-
-            return res;
-        };
-
-        // Also listen to history changes as an extra safety for SPA navigation
-        try {
-            window.addEventListener('hashchange', () => setTimeout(initSelects, 200));
-            window.addEventListener('popstate', () => setTimeout(initSelects, 200));
-        } catch (e) {}
-
-        // Hook into fetch (if present) so we detect navigation and data loads
-        try {
-            if (window.fetch) {
-                const _fetch = window.fetch.bind(window);
-                window.fetch = function(input, init) {
-                    const url = (typeof input === 'string') ? input : (input && input.url) || '';
-                    const res = _fetch(input, init);
-                    Promise.resolve(res).then(() => {
-                        try {
-                            if (url && (/\/Items\/|Playback|PlaybackInfo|Sessions\/PlaybackInfo/i).test(url)) {
-                                setTimeout(() => { try { initSelects(); } catch (e) {} }, 120);
-                            }
-                        } catch (e) {}
-                    }).catch(() => {});
-                    return res;
-                };
-            }
-        } catch (e) { /* ignore */ }
-
-        // Hook into XMLHttpRequest as well
-        try {
-            const origOpen = XMLHttpRequest.prototype.open;
-            const origSend = XMLHttpRequest.prototype.send;
-            XMLHttpRequest.prototype.open = function(method, url) {
-                this._url_for_select_cards = url;
-                return origOpen.apply(this, arguments);
+                
+                return originalAjax.apply(this, arguments);
             };
-            XMLHttpRequest.prototype.send = function(body) {
-                const onload = () => {
-                    try {
-                        const url = this._url_for_select_cards || '';
-                        if (url && (/\/Items\/|Playback|PlaybackInfo|Sessions\/PlaybackInfo/i).test(url)) {
-                            setTimeout(() => { try { initSelects(); } catch (e) {} }, 120);
-                        }
-                    } catch (e) {}
-                };
-                this.addEventListener('load', onload);
-                return origSend.apply(this, arguments);
-            };
-        } catch (e) { /* ignore */ }
-
-        // Wrap history APIs so SPA navigation triggers init
-        try {
-            const _push = history.pushState;
-            history.pushState = function() { const res = _push.apply(this, arguments); setTimeout(initSelects, 200); return res; };
-            const _replace = history.replaceState;
-            history.replaceState = function() { const res = _replace.apply(this, arguments); setTimeout(initSelects, 200); return res; };
-        } catch (e) { /* ignore */ }
-    }
-    
-    // Check if form already exists
-    if (document.querySelector('form.trackSelections')) {
-        // Ensure styles are present before initializing an existing form
-        try { ensureStyle(); } catch (e) { console.warn('[SelectToCards] ensureStyle failed', e); }
-        initSelects();
+        }
     }
 
-    console.log('[SelectToCards] Standalone version loaded');
+    // ============================================
+    // STARTUP
+    // ============================================
+
+    function init() {
+        if (initialized) return;
+        initialized = true;
+        
+        console.log('[SelectToCards] Initializing...');
+        
+        injectStyles();
+        setupObservers();
+        
+        // Check if form already exists
+        if (document.querySelector('form.trackSelections')) {
+            initializeForm();
+        }
+    }
+
+    // Start on DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    console.log('[SelectToCards] Simplified version loaded');
 })();
