@@ -36,11 +36,15 @@ namespace Baklava.Api
                     defaultTmdbId = cfg.DefaultTmdbId, 
                     tmdbApiKey = cfg.TmdbApiKey,
                     enableSearchFilter = cfg.EnableSearchFilter,
-                    forceTVClientLocalSearch = cfg.ForceTVClientLocalSearch
+                    forceTVClientLocalSearch = cfg.ForceTVClientLocalSearch,
+                    disableNonAdminRequests = cfg.DisableNonAdminRequests
                 });
             }
 
-            return Ok(new { defaultTmdbId = cfg.DefaultTmdbId });
+            return Ok(new { 
+                defaultTmdbId = cfg.DefaultTmdbId,
+                disableNonAdminRequests = cfg.DisableNonAdminRequests 
+            });
         }
 
         // Admin-only update: requires authenticated admin user
@@ -71,10 +75,14 @@ namespace Baklava.Api
             {
                 cfg.ForceTVClientLocalSearch = dto.forceTVClientLocalSearch.Value;
             }
+            if (dto.disableNonAdminRequests.HasValue)
+            {
+                cfg.DisableNonAdminRequests = dto.disableNonAdminRequests.Value;
+            }
             
             Plugin.Instance.SaveConfiguration();
-            _logger.LogInformation("[ConfigController] Updated configuration - SearchFilter: {SearchFilter}, ForceTVLocal: {ForceTVLocal}", 
-                cfg.EnableSearchFilter, cfg.ForceTVClientLocalSearch);
+            _logger.LogInformation("[ConfigController] Updated configuration - SearchFilter: {SearchFilter}, ForceTVLocal: {ForceTVLocal}, DisableNonAdminRequests: {DisableNonAdminRequests}", 
+                cfg.EnableSearchFilter, cfg.ForceTVClientLocalSearch, cfg.DisableNonAdminRequests);
             return Ok();
         }
     }
@@ -85,5 +93,6 @@ namespace Baklava.Api
         public string tmdbApiKey { get; set; }
         public bool? enableSearchFilter { get; set; }
         public bool? forceTVClientLocalSearch { get; set; }
+        public bool? disableNonAdminRequests { get; set; }
     }
 }

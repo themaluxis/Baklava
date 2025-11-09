@@ -32,5 +32,8 @@ namespace Baklava
 
         // Force TV clients to use local search only (enabled by default)
         public bool ForceTVClientLocalSearch { get; set; } = true;
+
+        // Disable requests for non-admin users (they get "Open" button instead)
+        public bool DisableNonAdminRequests { get; set; } = false;
     }
 }

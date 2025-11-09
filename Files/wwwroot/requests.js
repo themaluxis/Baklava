@@ -150,7 +150,8 @@
     async function createRequestCard(request, adminView) {
         const card = document.createElement('div');
         card.className = 'request-card';
-        card.dataset.requestId = request.Id;
+        // Support different casing coming from server/client payloads and avoid undefined dataset
+        card.dataset.requestId = request.Id || request.id || request.requestId || '';
         card.style.cssText = `
             display: inline-block;
             width: 100px;
@@ -196,6 +197,8 @@
 
         if (request.Status === 'pending') {
             const statusBadge = document.createElement('div');
+            statusBadge.className = 'request-status-badge';
+            statusBadge.dataset.status = 'pending';
             statusBadge.textContent = 'Pending';
             statusBadge.style.cssText = `
                 position: absolute;
@@ -211,6 +214,8 @@
             card.appendChild(statusBadge);
         } else if (request.Status === 'approved') {
             const statusBadge = document.createElement('div');
+            statusBadge.className = 'request-status-badge';
+            statusBadge.dataset.status = 'approved';
             statusBadge.textContent = 'Approved';
             statusBadge.style.cssText = `
                 position: absolute;
@@ -226,6 +231,8 @@
             card.appendChild(statusBadge);
         } else if (request.Status === 'rejected') {
             const statusBadge = document.createElement('div');
+            statusBadge.className = 'request-status-badge';
+            statusBadge.dataset.status = 'rejected';
             statusBadge.textContent = 'Rejected';
             statusBadge.style.cssText = `
                 position: absolute;

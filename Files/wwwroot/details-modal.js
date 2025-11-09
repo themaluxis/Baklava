@@ -507,14 +507,15 @@
                     try {
                         if (orig && orig.parentElement) {
                             const clone = orig.cloneNode(true);
-                            // Update the status badge to show "Rejected"
-                            const badges = clone.querySelectorAll('div');
-                            for (const badge of badges) {
-                                if (badge.textContent === 'Pending') {
-                                    badge.textContent = 'Rejected';
-                                    badge.style.background = 'rgba(244, 67, 54, 0.95)';
+                            // Update the status badge to show "Rejected" only on the specific badge element
+                            try {
+                                const statusEl = clone.querySelector('.request-status-badge');
+                                if (statusEl && statusEl.textContent && statusEl.textContent.trim() === 'Pending') {
+                                    statusEl.textContent = 'Rejected';
+                                    statusEl.dataset.status = 'rejected';
+                                    statusEl.style.background = 'rgba(244, 67, 54, 0.95)';
                                 }
-                            }
+                            } catch (e) { /* ignore */ }
                             rejectedDropdown.appendChild(clone);
                         }
                     } catch (e) { /* ignore */ }
@@ -526,14 +527,14 @@
                     try {
                         if (orig && orig.parentElement) {
                             const clone2 = orig.cloneNode(true);
-                            // Update the status badge to show "Rejected"
-                            const badges = clone2.querySelectorAll('div');
-                            for (const badge of badges) {
-                                if (badge.textContent === 'Pending') {
-                                    badge.textContent = 'Rejected';
-                                    badge.style.background = 'rgba(244, 67, 54, 0.95)';
+                            try {
+                                const statusEl2 = clone2.querySelector('.request-status-badge');
+                                if (statusEl2 && statusEl2.textContent && statusEl2.textContent.trim() === 'Pending') {
+                                    statusEl2.textContent = 'Rejected';
+                                    statusEl2.dataset.status = 'rejected';
+                                    statusEl2.style.background = 'rgba(244, 67, 54, 0.95)';
                                 }
-                            }
+                            } catch (e) { /* ignore */ }
                             rejectedPage.appendChild(clone2);
                         }
                     } catch (e) { /* ignore */ }
@@ -605,6 +606,16 @@
         const user = await window.ApiClient.getUser(userId);
         const isAdmin = user?.Policy?.IsAdministrator;
         
+        // Check if non-admin requests are disabled
+        let disableNonAdminRequests = false;
+        try {
+            const configUrl = window.ApiClient.getUrl('api/baklava/config');
+            const configResponse = await window.ApiClient.ajax({ type: 'GET', url: configUrl, dataType: 'json' });
+            disableNonAdminRequests = configResponse?.disableNonAdminRequests === true;
+        } catch (e) {
+            console.warn('[DetailsModal] Could not fetch config:', e);
+        }
+        
         if (inLibrary) {
             importBtn.style.display = 'none';
             requestBtn.style.display = 'none';
@@ -615,8 +626,16 @@
                 importBtn.style.display = 'block';
                 requestBtn.style.display = 'none';
             } else {
-                importBtn.style.display = 'none';
-                requestBtn.style.display = 'block';
+                // Non-admin user
+                if (disableNonAdminRequests) {
+                    // Show Import button instead of Request when disabled
+                    importBtn.style.display = 'block';
+                    requestBtn.style.display = 'none';
+                } else {
+                    // Normal behavior - show Request button
+                    importBtn.style.display = 'none';
+                    requestBtn.style.display = 'block';
+                }
             }
         }
     }
