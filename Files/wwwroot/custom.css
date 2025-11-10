@@ -10,6 +10,8 @@
     position: absolute !important;
     top: 10rem !important;
     left: 2rem !important;
+    width: unset !important;
+    padding: unset !important;
 }
 
 /* Disable grid layout on detail section */
@@ -308,7 +310,6 @@
 }
 
 /* Reset Jellyfin detail page layout paddings and widths */
-.detailPagePrimaryContent,
 .detailPageWrapperContainer,
 .padded-right,
 .detailPageContent {
@@ -320,10 +321,19 @@
     box-sizing: border-box;
 }
 
-#peopleHeader {
-    padding: 8rem !important;
+.detailPagePrimaryContent {
+    margin: 0 8rem !important;
+    margin: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
 }
 
-.detailsRibbon {
-    padding: 8rem !important;
+#peopleHeader {
+    padding: 0 8rem !important;
+}
+
+.detailRibbon {
+    padding: 0 8rem !important;
 }

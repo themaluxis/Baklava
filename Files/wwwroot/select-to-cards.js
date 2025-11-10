@@ -168,7 +168,7 @@
         style.textContent = `
             /* Hide original select containers */
             form.trackSelections .selectContainer { display: none !important; }
-            form.trackSelections { max-width: none !important; width: 100% !important; }
+            form.trackSelections { max-width: unset !important; width: unset !important; }
             
             /* Carousel wrapper */
             .stc-wrapper {
@@ -370,40 +370,6 @@
                 font-size: 12px;
                 text-align: center;
                 font-family: monospace;
-                position: relative;
-            }
-            
-            /* Filename text container (separate from arrows) */
-            .stc-filename-text {
-                display: block;
-                padding: 0 40px; /* Space for arrows on both sides */
-            }
-
-            /* When arrows are embedded into filename container they are positioned at its bottom corners */
-            .stc-filename .stc-arrow {
-                position: absolute;
-                bottom: 6px;
-                width: 30px;
-                height: 28px;
-                background: rgba(0,0,0,0.45);
-                border-radius: 4px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: #fff;
-                border: 1px solid rgba(255,255,255,0.2);
-                cursor: pointer;
-                font-size: 20px;
-                z-index: 10;
-            }
-            .stc-filename .stc-arrow.stc-arrow-left { left: 8px; }
-            .stc-filename .stc-arrow.stc-arrow-right { right: 8px; }
-            .stc-filename .stc-arrow:hover {
-                background: rgba(0,0,0,0.65);
-            }
-            .stc-filename .stc-arrow:disabled {
-                opacity: 0.3;
-                cursor: not-allowed;
             }
 
             /* Toggle to show original selects */
@@ -569,9 +535,9 @@
             // Update filename display if version select
             if (type === 'version') {
                 const selectedOption = Array.from(select.options).find(opt => opt.value === value);
-                const filenameText = wrapper.querySelector('.stc-filename-text');
-                if (selectedOption && filenameText) {
-                    filenameText.textContent = selectedOption.textContent;
+                const filenameDiv = wrapper.querySelector('.stc-filename');
+                if (selectedOption && filenameDiv) {
+                    filenameDiv.textContent = selectedOption.textContent;
                 }
             }
         }
@@ -718,23 +684,23 @@
             wrapper.className = 'stc-wrapper';
             
             if (type === 'version') {
-                // For version: filename div with arrows inside, no controls div
+                // For version: add controls div with arrows (no label), then filename div, then carousel
+                controlsDiv = document.createElement('div');
+                controlsDiv.className = 'stc-controls';
+                wrapper.appendChild(controlsDiv);
+                
+                // Filename div (without arrows inside)
                 const filenameDiv = document.createElement('div');
                 filenameDiv.className = 'stc-filename';
-                
-                // Create text container for filename (separate from arrows)
-                const filenameText = document.createElement('span');
-                filenameText.className = 'stc-filename-text';
-                filenameDiv.appendChild(filenameText);
-                
+                filenameDiv.textContent = ''; // Will be filled later
                 wrapper.appendChild(filenameDiv);
 
                 cardsContainer = document.createElement('div');
                 cardsContainer.className = 'stc-cards';
                 wrapper.appendChild(cardsContainer);
                 
-                // Create arrows inside filename div
-                createArrows(filenameDiv, cardsContainer, { appendTo: filenameDiv });
+                // Create arrows in controls div
+                createArrows(controlsDiv, cardsContainer);
             } else {
                 // For audio/subtitle: controls div with label and arrows
                 controlsDiv = document.createElement('div');
@@ -772,7 +738,14 @@
         cardsContainer.innerHTML = '';
         
         if (select.options.length === 0) {
-            cardsContainer.appendChild(createPlaceholderCard());
+            // Show placeholder cards for audio/subtitle tracks
+            if (type === 'audio' || type === 'subtitle') {
+                for (let i = 0; i < 3; i++) {
+                    cardsContainer.appendChild(createPlaceholderCard('Waiting...'));
+                }
+            } else {
+                cardsContainer.appendChild(createPlaceholderCard());
+            }
             return;
         }
         
@@ -784,9 +757,9 @@
         if (type === 'version' && select.options.length > 0) {
             const selectedOption = Array.from(select.options).find(opt => opt.selected) || select.options[0];
             if (selectedOption && selectedOption.textContent) {
-                const existingFilename = wrapper.querySelector('.stc-filename');
-                if (existingFilename) {
-                    existingFilename.textContent = selectedOption.textContent;
+                const filenameDiv = wrapper.querySelector('.stc-filename');
+                if (filenameDiv) {
+                    filenameDiv.textContent = selectedOption.textContent;
                 }
             }
         }
@@ -911,9 +884,18 @@
                     console.log('[SelectToCards] Version select waiting for options (observer active)...');
                 }
             }
-            // For audio/subtitle, create empty carousel with placeholder
+            // For audio/subtitle, create carousel with placeholder cards initially
             else if (type === 'audio' || type === 'subtitle') {
+                console.log('[SelectToCards] Creating placeholder carousel for', type);
                 populateCarousel(select, type);
+                
+                // Add placeholder cards if empty
+                if (select.options.length === 0 && select._stcCards) {
+                    select._stcCards.innerHTML = '';
+                    for (let i = 0; i < 3; i++) {
+                        select._stcCards.appendChild(createPlaceholderCard('Waiting...'));
+                    }
+                }
             }
         });
     }

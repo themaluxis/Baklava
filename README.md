@@ -136,7 +136,7 @@ The search toggle appears as a **globe icon** next to the search bar:
 
 ### 📺 TV Client Behavior
 
-When **Force TV Client Local Search** is enabled (default: ON):
+When **Force TV Client Local Search** is enabled:
 - Android TV, Fire TV, and other TV clients automatically use **local search**
 - The `"local:"` prefix is added server-side  
 - No user interaction required — fully transparent  
