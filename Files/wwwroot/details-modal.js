@@ -174,7 +174,16 @@
 
             // Use the Baklava metadata streams endpoint (server-side) — not Gelato path
             const url = window.ApiClient.getUrl('api/baklava/metadata/streams') + '?itemId=' + encodeURIComponent(itemId);
-            const resp = await window.ApiClient.ajax({ type: 'GET', url: url, dataType: 'json' });
+            let resp;
+            try {
+                resp = await window.ApiClient.ajax({ type: 'GET', url: url, dataType: 'json' });
+            } catch (err) {
+                // Item not in library yet (404 expected for external search results) — skip streams silently
+                if (err?.status === 404 || err?.response?.status === 404) {
+                    return;
+                }
+                throw err;
+            }
             if (!resp) return;
 
             const infoEl = qs('#item-detail-info', modal);
@@ -326,10 +335,16 @@
         closeBtn.addEventListener('click', hideModal);
         
         importBtn.addEventListener('click', async () => {
-            const title = qs('#item-detail-title', overlay).textContent;
             hideModal();
-            if (title) {
-                window.location.hash = '#/search.html?query=' + encodeURIComponent(title);
+            // Navigate to the item details if we have a Jellyfin GUID, otherwise fallback to search
+            const targetId = overlay?.dataset?.itemId || overlay?.dataset?.jellyfinId;
+            if (targetId) {
+                window.location.hash = '#/details?id=' + encodeURIComponent(targetId);
+            } else {
+                const title = qs('#item-detail-title', overlay).textContent;
+                if (title) {
+                    window.location.hash = '#/search.html?query=' + encodeURIComponent(title);
+                }
             }
         });
         
@@ -473,24 +488,10 @@
             // the modal (prefers Jellyfin item id when available).
             setTimeout(() => {
                 try { hideModal(); } catch (e) { /* ignore */ }
-
-                // Prefer a Jellyfin GUID if available. If not present (we only have TMDB/IMDB),
-                // the details route won't resolve — fall back to a search for the title so the
-                // user can find the item once import completes.
-                const candidate = overlay?.dataset?.itemId || overlay?.dataset?.jellyfinId || overlay?.dataset?.tmdbId || overlay?.dataset?.imdbId || '';
-
-                // Simple GUID check (Jellyfin uses GUIDs for item ids)
-                const isGuid = /^[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}$/.test(candidate);
-
-                if (isGuid) {
+                const targetId = overlay?.dataset?.itemId || overlay?.dataset?.jellyfinId || overlay?.dataset?.tmdbId || overlay?.dataset?.imdbId;
+                if (targetId) {
                     // Navigate to Jellyfin details route
-                    window.location.hash = '#/details?id=' + encodeURIComponent(candidate);
-                } else {
-                    // Fallback: open a search for the title so user can find the item later
-                    const title = (qs('#item-detail-title', overlay)?.textContent || '').trim();
-                    if (title) {
-                        window.location.hash = '#/search.html?query=' + encodeURIComponent(title);
-                    }
+                    window.location.hash = '#/details?id=' + encodeURIComponent(targetId);
                 }
             }, 250);
         });
