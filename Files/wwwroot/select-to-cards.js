@@ -390,9 +390,21 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                color: #fff;
+                border: 1px solid rgba(255,255,255,0.2);
+                cursor: pointer;
+                font-size: 20px;
+                z-index: 10;
             }
             .stc-filename .stc-arrow.stc-arrow-left { left: 8px; }
             .stc-filename .stc-arrow.stc-arrow-right { right: 8px; }
+            .stc-filename .stc-arrow:hover {
+                background: rgba(0,0,0,0.65);
+            }
+            .stc-filename .stc-arrow:disabled {
+                opacity: 0.3;
+                cursor: not-allowed;
+            }
 
             /* Toggle to show original selects */
             body.stc-show-selects form.trackSelections .selectContainer { display: block !important; }
@@ -410,12 +422,6 @@
                 max-width: 900px;
                 margin-left: auto;
                 margin-right: auto;
-            }
-
-            /* Detail page layout fixes - make primary content full width when alone */
-            .detailPagePrimaryContent {
-                width: 100% !important;
-                max-width: none !important;
             }
         `;
         
@@ -916,8 +922,20 @@
     // OBSERVERS & HOOKS
     // ============================================
 
+    function movePortraitCard() {
+        // Move .card.portraitCard to #itemDetailPage
+        const portraitCard = document.querySelector('.card.portraitCard');
+        const itemDetailPage = document.getElementById('itemDetailPage');
+        
+        if (portraitCard && itemDetailPage && !portraitCard._moved) {
+            console.log('[SelectToCards] Moving portrait card to itemDetailPage');
+            portraitCard._moved = true;
+            itemDetailPage.insertBefore(portraitCard, itemDetailPage.firstChild);
+        }
+    }
+
     function setupObservers() {
-        // Watch for form additions
+        // Watch for form additions and portrait card
         const observer = new MutationObserver(mutations => {
             for (const mutation of mutations) {
                 for (const node of mutation.addedNodes) {
@@ -925,6 +943,12 @@
                     
                     if (node.matches?.('form.trackSelections') || node.querySelector?.('form.trackSelections')) {
                         setTimeout(initializeForm, 50);
+                    }
+                    
+                    // Check for portrait card or itemDetailPage
+                    if (node.matches?.('.card.portraitCard') || node.querySelector?.('.card.portraitCard') ||
+                        node.matches?.('#itemDetailPage') || node.querySelector?.('#itemDetailPage')) {
+                        setTimeout(movePortraitCard, 50);
                     }
                 }
             }
@@ -1019,6 +1043,7 @@
         
         injectStyles();
         setupObservers();
+        movePortraitCard(); // Try to move portrait card immediately if it exists
         
         // Check if form already exists
         if (document.querySelector('form.trackSelections')) {

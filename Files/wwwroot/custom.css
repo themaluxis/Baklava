@@ -5,11 +5,16 @@
 
 /* Removed ::before pseudo-element that injected a custom image into the loader */
 
-/* Hide portrait card from detail page */
+/* Portrait card styling (moved via JS to #itemDetailPage) */
 .card.portraitCard {
     position: absolute !important;
     top: 10rem !important;
     left: 2rem !important;
+}
+
+/* Disable grid layout on detail section */
+#itemDetailPage .detailSection {
+    display: block !important;
 }
 
 /* Modal for item details (opened when clicking a title) */
@@ -312,5 +317,13 @@
     width: auto !important;
     max-width: none !important;
     min-width: 0 !important;
-    box-sizing: border-box; /* ensures padding/width calculation is safe */
+    box-sizing: border-box;
+}
+
+#peopleHeader {
+    padding: 8rem !important;
+}
+
+.detailsRibbon {
+    padding: 8rem !important;
 }
