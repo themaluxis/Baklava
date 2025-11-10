@@ -330,12 +330,9 @@
         overlay.addEventListener('click', ev => ev.target === overlay && hideModal());
         closeBtn.addEventListener('click', hideModal);
         
-        importBtn.addEventListener('click', async () => {
-            const title = qs('#item-detail-title', overlay).textContent;
-            hideModal();
-            if (title) {
-                window.location.hash = '#/search.html?query=' + encodeURIComponent(title);
-            }
+        importBtn.addEventListener('click', () => {
+            const id = overlay.dataset.itemId;
+            if (id) { hideModal(); window.location.hash = '#/details?id=' + encodeURIComponent(id); }
         });
         
         requestBtn.addEventListener('click', () => {

@@ -92,6 +92,11 @@
         let langCode = stream.language || stream.displayLanguage || '';
         let lang = 'Unknown';
         
+        // Debug: log streams that have no language code
+        if (!langCode && stream) {
+            console.log('[SelectToCards] Stream with no language:', stream);
+        }
+        
         if (langCode) {
             // Map common language codes to full names
             const langMap = {
@@ -144,6 +149,7 @@
                 lang = langMap[lowerCode];
             } else {
                 // Capitalize first letter of unknown language
+                console.log('[SelectToCards] Unknown language code:', langCode);
                 lang = langCode.charAt(0).toUpperCase() + langCode.slice(1).toLowerCase();
             }
         }
@@ -169,14 +175,6 @@
             /* Hide original select containers */
             form.trackSelections .selectContainer { display: none !important; }
             form.trackSelections { max-width: unset !important; width: unset !important; }
-
-            /* Force trackSelections to full width so carousels and wrappers align */
-            .detailSection .trackSelections,
-            form.trackSelections,
-            .trackSelections {
-                width: 100% !important;
-                max-width: unset !important;
-            }
             
             /* Carousel wrapper */
             .stc-wrapper {
@@ -382,14 +380,6 @@
 
             /* Toggle to show original selects */
             body.stc-show-selects form.trackSelections .selectContainer { display: block !important; }
-            
-            /* Separator line after carousels */
-            .stc-separator {
-                margin: 20px 0;
-                height: 1px;
-                background: rgba(255,255,255,0.1);
-                border: none;
-            }
 
             /* Center single carousel when it's the only one in form */
             form.trackSelections .stc-wrapper:only-of-type {
@@ -641,41 +631,47 @@
             return;
         }
         
-        // Populate audio tracks
-        if (audioSelect && streams.audio && streams.audio.length > 0) {
-            streams.audio.forEach((track, idx) => {
-                const option = document.createElement('option');
-                option.value = String(track.index);
-                option.textContent = track.title;
-                option._meta = track;
-                if (idx === 0) option.selected = true;
-                audioSelect.appendChild(option);
-            });
-            populateCarousel(audioSelect, 'audio');
-        } else if (audioSelect?._stcCards) {
-            audioSelect._stcCards.innerHTML = '';
-            // Add 3 empty state cards
-            for (let i = 0; i < 3; i++) {
-                audioSelect._stcCards.appendChild(createEmptyCard());
+        // Populate audio tracks - CLEAR FIRST to avoid duplicates
+        if (audioSelect) {
+            audioSelect.innerHTML = '';  // Clear existing options
+            if (streams.audio && streams.audio.length > 0) {
+                streams.audio.forEach((track, idx) => {
+                    const option = document.createElement('option');
+                    option.value = String(track.index);
+                    option.textContent = track.title;
+                    option._meta = track;
+                    if (idx === 0) option.selected = true;
+                    audioSelect.appendChild(option);
+                });
+                populateCarousel(audioSelect, 'audio');
+            } else if (audioSelect._stcCards) {
+                audioSelect._stcCards.innerHTML = '';
+                // Add 3 empty state cards
+                for (let i = 0; i < 3; i++) {
+                    audioSelect._stcCards.appendChild(createEmptyCard());
+                }
             }
         }
         
-        // Populate subtitle tracks
-        if (subtitleSelect && streams.subs && streams.subs.length > 0) {
-            streams.subs.forEach((track, idx) => {
-                const option = document.createElement('option');
-                option.value = String(track.index);
-                option.textContent = track.title;
-                option._meta = track;
-                if (idx === 0) option.selected = true;
-                subtitleSelect.appendChild(option);
-            });
-            populateCarousel(subtitleSelect, 'subtitle');
-        } else if (subtitleSelect?._stcCards) {
-            subtitleSelect._stcCards.innerHTML = '';
-            // Add 3 empty state cards
-            for (let i = 0; i < 3; i++) {
-                subtitleSelect._stcCards.appendChild(createEmptyCard());
+        // Populate subtitle tracks - CLEAR FIRST to avoid duplicates
+        if (subtitleSelect) {
+            subtitleSelect.innerHTML = '';  // Clear existing options
+            if (streams.subs && streams.subs.length > 0) {
+                streams.subs.forEach((track, idx) => {
+                    const option = document.createElement('option');
+                    option.value = String(track.index);
+                    option.textContent = track.title;
+                    option._meta = track;
+                    if (idx === 0) option.selected = true;
+                    subtitleSelect.appendChild(option);
+                });
+                populateCarousel(subtitleSelect, 'subtitle');
+            } else if (subtitleSelect._stcCards) {
+                subtitleSelect._stcCards.innerHTML = '';
+                // Add 3 empty state cards
+                for (let i = 0; i < 3; i++) {
+                    subtitleSelect._stcCards.appendChild(createEmptyCard());
+                }
             }
         }
     }
@@ -733,34 +729,15 @@
                 createArrows(controlsDiv, cardsContainer);
             }
             
-            // Insert wrapper and MOVE the select into it so our UI isn't hidden by host containers
+            // Insert after the select's container
             const selectContainer = select.closest('.selectContainer');
-            if (selectContainer && selectContainer.parentNode) {
-                selectContainer.parentNode.insertBefore(wrapper, selectContainer);
-            } else if (select.parentNode) {
-                select.parentNode.insertBefore(wrapper, select);
+            if (selectContainer) {
+                selectContainer.parentNode.insertBefore(wrapper, selectContainer.nextSibling);
             } else {
-                const form = select.closest('form') || document.body;
-                form.appendChild(wrapper);
+                const form = select.closest('form');
+                if (form) form.appendChild(wrapper);
             }
-
-            // Move the select into our wrapper
-            try {
-                wrapper.appendChild(select);
-            } catch (e) {
-                console.warn('[SelectToCards] Failed to move select into wrapper:', e);
-            }
-
-            // Remove original container if it doesn't contain other selects
-            try {
-                if (selectContainer && selectContainer.parentNode) {
-                    const hasOtherSelects = selectContainer.querySelectorAll('select').length > 0;
-                    if (!hasOtherSelects) selectContainer.parentNode.removeChild(selectContainer);
-                }
-            } catch (e) {
-                console.warn('[SelectToCards] Failed to remove original selectContainer:', e);
-            }
-
+            
             select._stcWrapper = wrapper;
             select._stcCards = cardsContainer;
             select._stcControls = controlsDiv;
@@ -798,16 +775,6 @@
                     // Display the original filename in the stc-filename div
                     filenameDiv.textContent = selectedOption.getAttribute('data-original') || selectedOption.textContent;
                 }
-            }
-        }
-        
-        // Add separator line after each carousel, skip for subtitles (last block)
-        if (type !== 'subtitle') {
-            const existingSeparator = wrapper.nextElementSibling;
-            if (!existingSeparator || !existingSeparator.classList.contains('stc-separator')) {
-                const separator = document.createElement('hr');
-                separator.className = 'stc-separator';
-                wrapper.parentNode.insertBefore(separator, wrapper.nextSibling);
             }
         }
         

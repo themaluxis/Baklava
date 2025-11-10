@@ -17,21 +17,17 @@ namespace Baklava
     // match the actual folder the plugin is installed to (e.g. "Baklava").
     private static readonly string PluginFolderName = Assembly.GetExecutingAssembly().GetName().Name ?? "Baklava";
 
-        // Get JavaScript files to inject based on configuration
+        // Get JavaScript files to inject
         private static string[] GetJsFiles()
         {
-            // Check if user prefers dropdown selects over carousel cards
-            var useDropdowns = Plugin.Instance?.Configuration?.UseDropdownsInsteadOfCards ?? false;
-            var selectScript = useDropdowns ? "select-to-select.js" : "select-to-cards.js";
-            
             return new[]
             {
-                "details-modal.js",    // Modal & TMDB metadata integration
-                "library-status.js",   // Library presence / status UI
-                selectScript,          // Playback streams UI (cards or dropdowns)
-                "reviews-carousel.js", // TMDB reviews carousel (works with both modes)
-                "requests.js",         // Consolidated requests manager, header button, menu
-                "search-toggle.js"     // Search toggle globe icon
+                "details-modal.js",       // Modal & TMDB metadata integration
+                "library-status.js",      // Library presence / status UI
+                "select-to-cards.js",     // Playback streams UI (card carousel)
+                "reviews-carousel.js",    // TMDB reviews carousel
+                "requests.js",            // Consolidated requests manager, header button, menu
+                "search-toggle.js"        // Search toggle globe icon
             };
         }
 
@@ -123,6 +119,7 @@ namespace Baklava
             var jsFiles = GetJsFiles();
             foreach (var jsFile in jsFiles)
             {
+                bool embedded = false;
                 try
                 {
                     // Try to load as embedded resource first
@@ -137,16 +134,19 @@ namespace Baklava
                             using var reader = new System.IO.StreamReader(stream);
                             var jsContent = reader.ReadToEnd();
                             scriptTags.Add($"<script type=\"text/javascript\">\n/* {jsFile} */\n{jsContent}\n</script>");
-                            continue;
+                            embedded = true;
                         }
                     }
-
-                    // Fallback to static file reference
-                    scriptTags.Add($"<script src=\"/plugins/{PluginFolderName}/Files/wwwroot/{jsFile}\"></script>");
                 }
                 catch (Exception ex)
                 {
                     try { PluginLogger.Log($"InjectScript: Error loading {jsFile}: {ex.Message}"); } catch { }
+                }
+
+                // Fallback to static file reference ONLY if embedded failed
+                if (!embedded)
+                {
+                    scriptTags.Add($"<script src=\"/plugins/{PluginFolderName}/Files/wwwroot/{jsFile}\"></script>");
                 }
             }
 

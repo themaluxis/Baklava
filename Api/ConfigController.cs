@@ -37,15 +37,13 @@ namespace Baklava.Api
                     tmdbApiKey = cfg.TmdbApiKey,
                     enableSearchFilter = cfg.EnableSearchFilter,
                     forceTVClientLocalSearch = cfg.ForceTVClientLocalSearch,
-                    disableNonAdminRequests = cfg.DisableNonAdminRequests,
-                    useDropdownsInsteadOfCards = cfg.UseDropdownsInsteadOfCards
+                    disableNonAdminRequests = cfg.DisableNonAdminRequests
                 });
             }
 
             return Ok(new { 
                 defaultTmdbId = cfg.DefaultTmdbId,
-                disableNonAdminRequests = cfg.DisableNonAdminRequests,
-                useDropdownsInsteadOfCards = cfg.UseDropdownsInsteadOfCards
+                disableNonAdminRequests = cfg.DisableNonAdminRequests
             });
         }
 
@@ -81,10 +79,6 @@ namespace Baklava.Api
             {
                 cfg.DisableNonAdminRequests = dto.disableNonAdminRequests.Value;
             }
-            if (dto.useDropdownsInsteadOfCards.HasValue)
-            {
-                cfg.UseDropdownsInsteadOfCards = dto.useDropdownsInsteadOfCards.Value;
-            }
             
             Plugin.Instance.SaveConfiguration();
             _logger.LogInformation("[ConfigController] Updated configuration - SearchFilter: {SearchFilter}, ForceTVLocal: {ForceTVLocal}, DisableNonAdminRequests: {DisableNonAdminRequests}", 
@@ -100,6 +94,5 @@ namespace Baklava.Api
         public bool? enableSearchFilter { get; set; }
         public bool? forceTVClientLocalSearch { get; set; }
         public bool? disableNonAdminRequests { get; set; }
-        public bool? useDropdownsInsteadOfCards { get; set; }
     }
 }

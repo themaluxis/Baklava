@@ -10,6 +10,23 @@
     position: absolute !important;
     top: 10rem !important;
     left: 2rem !important;
+    width: 350px !important;
+}
+
+/* Responsive styling for mobile devices */
+@media screen and (max-width: 768px) {
+    .card.portraitCard {
+        width: 200px !important;
+        left: 1rem !important;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .card.portraitCard {
+        width: 150px !important;
+        left: 0.5rem !important;
+        top: 8rem !important;
+    }
 }
 
 /* Disable grid layout on detail section */
@@ -327,14 +344,29 @@
     box-sizing: border-box;
 }
 
+/* Responsive margins for smaller screens */
+@media (max-width: 1024px) {
+    .detailPagePrimaryContent {
+        margin: 0 4rem !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .detailPagePrimaryContent {
+        margin: 0 2rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .detailPagePrimaryContent {
+        margin: 0 1rem !important;
+    }
+}
+
 #peopleHeader {
     padding: 2rem 8rem 0 8rem !important;
 }
 
 .detailRibbon {
     padding: 0 8rem !important;
-}
-
-.detailPageContent {
-    padding: 0 !important;
 }

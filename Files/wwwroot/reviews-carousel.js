@@ -6,6 +6,13 @@
 (function () {
     'use strict';
 
+    // Prevent double initialization
+    if (window._reviewsCarouselInitialized) {
+        console.log('[ReviewsCarousel] Already initialized, skipping');
+        return;
+    }
+    window._reviewsCarouselInitialized = true;
+
     console.log('[ReviewsCarousel] Loading...');
 
     let currentItemId = null;
@@ -72,55 +79,194 @@
 
         console.log('[ReviewsCarousel] Creating carousel with', reviews.length, 'reviews');
 
+        // Add responsive styles PROPERLY
+        if (!document.getElementById('baklava-reviews-responsive-style')) {
+            const style = document.createElement('style');
+            style.id = 'baklava-reviews-responsive-style';
+            style.textContent = `
+                .baklava-reviews-carousel {
+                    margin: 0 3rem;
+                    padding: 1.5rem 0;
+                }
+                
+                .baklava-review-card {
+                    min-height: 200px;
+                    max-height: 300px;
+                    overflow-y: auto;
+                    flex: 0 0 auto;
+                    width: 320px; /* default desktop card width */
+                }
+                
+                /* Tablet and smaller */
+                @media (max-width: 1024px) {
+                    .baklava-reviews-carousel {
+                        margin: 0 2rem !important;
+                    }
+                    .baklava-review-card { width: 300px; }
+                }
+                
+                /* Tablet */
+                @media (max-width: 768px) {
+                    .baklava-reviews-carousel {
+                        margin: 0 1rem !important;
+                    }
+                    .baklava-review-card {
+                        min-height: 180px;
+                        max-height: 250px;
+                        width: 260px;
+                    }
+                }
+                
+                /* Mobile */
+                @media (max-width: 480px) {
+                    .baklava-reviews-carousel {
+                        margin: 0 1rem !important;
+                    }
+                    .baklava-review-card {
+                        min-height: 150px;
+                        max-height: 200px;
+                        width: 200px;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Create wrapper
         const wrapper = document.createElement('div');
         wrapper.className = 'baklava-reviews-carousel';
-        wrapper.style.cssText = 'margin: 2rem 8rem 0 8rem; padding: 1.5rem; border-radius: 8px; height: 400px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; align-items: space-between;';
 
-        let html = '<div style="font-size: 1.3em; font-weight: 500; color: rgba(255,255,255,0.9); margin-bottom: 1rem;">Reviews</div>';
-        html += '<div style="position: relative; padding: 0 50px;">';
-        html += '<button class="baklava-review-prev" style="position: absolute; left: 0; top: 50%; z-index: 10; background: rgba(128, 128, 128, 0.5); border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; transform: translateY(-50%); font-size: 24px;">‹</button>';
-        html += '<button class="baklava-review-next" style="position: absolute; right: 0; top: 50%; z-index: 10; background: rgba(128, 128, 128, 0.5); border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; transform: translateY(-50%); font-size: 24px;">›</button>';
-        html += '<div class="baklava-review-track" style="display: flex; gap: 15px; transition: transform 0.3s ease; overflow: hidden;">';
+        // Title and navigation row
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;';
 
-        reviews.slice(0, 20).forEach(review => {
+        const title = document.createElement('div');
+        title.style.cssText = 'font-size: 1.3em; font-weight: 500; color: rgba(255,255,255,0.9);';
+        title.textContent = 'Reviews';
+
+        const navButtons = document.createElement('div');
+        navButtons.style.cssText = 'display: flex; gap: 10px;';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'baklava-review-prev';
+        prevBtn.style.cssText = 'background: rgba(128,128,128,0.5); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center;';
+        prevBtn.textContent = '‹';
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'baklava-review-next';
+        nextBtn.style.cssText = prevBtn.style.cssText;
+        nextBtn.textContent = '›';
+
+        navButtons.appendChild(prevBtn);
+        navButtons.appendChild(nextBtn);
+        headerRow.appendChild(title);
+        headerRow.appendChild(navButtons);
+        wrapper.appendChild(headerRow);
+
+        // Track container
+        const trackContainer = document.createElement('div');
+        trackContainer.style.cssText = 'position: relative; overflow: hidden; width: 100%;';
+
+        const track = document.createElement('div');
+        track.className = 'baklava-review-track';
+        track.style.cssText = 'display: flex; gap: 15px; transition: transform 0.3s ease;';
+
+        // Create review cards with FIXED dimensions and click for modal
+        reviews.slice(0, 20).forEach((review, idx) => {
             const author = review.author || 'Anonymous';
             const content = review.content || '';
-            const isTrunc = content.length > 200;
-            const text = isTrunc ? content.substring(0, 200) + '...' : content;
-            html += '<div class="baklava-review-card" style="background: rgba(255,255,255,0.05); padding: 1rem; height: 300px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);' + (isTrunc ? ' cursor: pointer;' : '') + '">';
-            html += '<div style="font-weight: bold; color: #fff; margin-bottom: 0.5rem;">' + escapeHtml(author) + '</div>';
-            html += '<div style="color: #ccc; font-size: 13px; line-height: 1.5;">' + escapeHtml(text) + '</div>';
-            html += '</div>';
+            const text = content.length > 200 ? content.substring(0, 200) + '...' : content;
+
+            const card = document.createElement('div');
+            card.className = 'baklava-review-card';
+            card.style.cssText = `
+                /* width is controlled by responsive CSS rules injected above */
+                background: rgba(255,255,255,0.05);
+                padding: 1.5rem;
+                border-radius: 6px;
+                border: 1px solid rgba(255,255,255,0.1);
+                cursor: pointer;
+                min-width: 0;
+                transition: background 0.2s ease;
+            `;
+
+            card.addEventListener('mouseenter', () => {
+                card.style.background = 'rgba(255,255,255,0.08)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.background = 'rgba(255,255,255,0.05)';
+            });
+
+            const authorDiv = document.createElement('div');
+            authorDiv.style.cssText = 'font-weight: bold; color: #fff; margin-bottom: 0.75rem; font-size: 1.1em;';
+            authorDiv.textContent = author;
+
+            const contentDiv = document.createElement('div');
+            contentDiv.style.cssText = 'color: #ccc; font-size: 14px; line-height: 1.6; word-wrap: break-word; overflow-y: auto;';
+            contentDiv.textContent = text;
+
+            card.appendChild(authorDiv);
+            card.appendChild(contentDiv);
+
+            // Click to open modal with full review
+            card.addEventListener('click', () => {
+                showReviewModal(author, content);
+            });
+
+            track.appendChild(card);
         });
 
-        html += '</div></div>';
-        html += '<div class="baklava-review-dots" style="display: flex; justify-content: center; gap: 8px; margin-top: 1rem;"></div>';
-        wrapper.innerHTML = html;
+        trackContainer.appendChild(track);
+        wrapper.appendChild(trackContainer);
 
-        castCollapsible.parentNode.insertBefore(wrapper, castCollapsible);
+        // Dots indicator
+        const dotsContainer = document.createElement('div');
+        dotsContainer.className = 'baklava-review-dots';
+        dotsContainer.style.cssText = 'display: flex; justify-content: center; gap: 8px; margin-top: 1rem;';
 
-        // Create dots
-        const dotsContainer = wrapper.querySelector('.baklava-review-dots');
         for (let i = 0; i < reviews.length; i++) {
             const dot = document.createElement('button');
-            dot.style.cssText = 'width: 10px; height: 10px; border-radius: 50%; background: ' + (i === 0 ? '#1e90ff' : '#555') + '; border: none; cursor: pointer; padding: 0;';
-            dot.addEventListener('click', () => { currentIdx = i; updateCarousel(); });
+            dot.style.cssText = `width: 10px; height: 10px; border-radius: 50%; background: ${i === 0 ? '#1e90ff' : '#555'}; border: none; cursor: pointer; padding: 0;`;
+            dot.addEventListener('click', () => {
+                const firstCard = track.querySelector('.baklava-review-card');
+                const gap = 15;
+                const cardWidth = firstCard ? Math.round(firstCard.getBoundingClientRect().width) : 0;
+                const maxIdx = getMaxIndex(cardWidth, gap);
+                currentIdx = Math.min(i, maxIdx);
+                updateCarousel();
+            });
             dotsContainer.appendChild(dot);
         }
 
-        const track = wrapper.querySelector('.baklava-review-track');
-        const prevBtn = wrapper.querySelector('.baklava-review-prev');
-        const nextBtn = wrapper.querySelector('.baklava-review-next');
+        wrapper.appendChild(dotsContainer);
+        castCollapsible.parentNode.insertBefore(wrapper, castCollapsible);
+
+        // Carousel navigation logic
         let currentIdx = 0;
 
+        function getMaxIndex(cardWidth, gap) {
+            const containerWidth = trackContainer.clientWidth || trackContainer.getBoundingClientRect().width;
+            if (!cardWidth || cardWidth <= 0) return Math.max(0, reviews.length - 1);
+            const visibleCount = Math.max(1, Math.floor(containerWidth / (cardWidth + gap)));
+            return Math.max(0, reviews.length - visibleCount);
+        }
+
         function updateCarousel() {
+            // Compute pixel offset based on first card width + gap
             const firstCard = track.querySelector('.baklava-review-card');
-            if (firstCard) {
-                const cardWidth = firstCard.offsetWidth;
-                const gap = 15;
-                const offset = currentIdx * (cardWidth + gap);
-                track.style.transform = 'translateX(-' + offset + 'px)';
-            }
+            if (!firstCard) return;
+
+            const gap = 15; // must match the track gap in px
+            const cardRect = firstCard.getBoundingClientRect();
+            const cardWidth = Math.round(cardRect.width);
+            // Clamp currentIdx so we don't scroll past available cards
+            const maxIdx = getMaxIndex(cardWidth, gap);
+            if (currentIdx > maxIdx) currentIdx = maxIdx;
+
+            const offsetPx = currentIdx * (cardWidth + gap);
+
+            track.style.transform = `translateX(-${offsetPx}px)`;
+
             Array.from(dotsContainer.children).forEach((d, i) => {
                 d.style.background = i === currentIdx ? '#1e90ff' : '#555';
             });
@@ -134,25 +280,116 @@
         });
 
         nextBtn.addEventListener('click', () => {
-            if (currentIdx < reviews.length - 1) {
+            const firstCard = track.querySelector('.baklava-review-card');
+            if (!firstCard) return;
+            const gap = 15;
+            const cardWidth = Math.round(firstCard.getBoundingClientRect().width);
+            const maxIdx = getMaxIndex(cardWidth, gap);
+            if (currentIdx < maxIdx) {
                 currentIdx++;
                 updateCarousel();
-            }
-        });
-
-        // Click on truncated reviews to show full content
-        wrapper.querySelectorAll('.baklava-review-card').forEach((card, i) => {
-            if (reviews[i] && reviews[i].content.length > 200) {
-                card.addEventListener('click', () => {
-                    showFullReview(reviews[i]);
-                });
             }
         });
 
         console.log('[ReviewsCarousel] Carousel created successfully');
     }
 
-    function showFullReview(review) {
+    // Modal for full review (like details modal)
+    function showReviewModal(author, content) {
+        // Remove existing modal if any
+        const existing = document.getElementById('baklava-review-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'baklava-review-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        `;
+
+        const modalContent = document.createElement('div');
+        modalContent.style.cssText = `
+            background: rgba(30,30,30,0.98);
+            border-radius: 8px;
+            padding: 2rem;
+            max-width: 800px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+            border: 1px solid rgba(255,255,255,0.15);
+        `;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.style.cssText = `
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 2rem;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.2s ease;
+        `;
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.background = 'rgba(255,255,255,0.1)';
+        });
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.background = 'none';
+        });
+        closeBtn.addEventListener('click', () => {
+            modal.remove();
+        });
+
+        const authorDiv = document.createElement('div');
+        authorDiv.style.cssText = 'font-size: 1.5em; font-weight: bold; color: #fff; margin-bottom: 1.5rem; padding-right: 3rem;';
+        authorDiv.textContent = author;
+
+        const contentDiv = document.createElement('div');
+        contentDiv.style.cssText = 'color: rgba(255,255,255,0.85); font-size: 15px; line-height: 1.8; white-space: pre-wrap; word-wrap: break-word;';
+        contentDiv.textContent = content;
+
+        modalContent.appendChild(closeBtn);
+        modalContent.appendChild(authorDiv);
+        modalContent.appendChild(contentDiv);
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+
+        // Close on background click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+
+        // Close on ESC key
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                modal.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+
+    function escapeHtml(text) {
         const popup = document.createElement('div');
         popup.className = 'baklava-review-popup';
         popup.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; display: flex; align-items: center; justify-content: center;';
@@ -235,21 +472,42 @@
         }
     }
 
+    // Check if we're on an item details page
+    function isDetailsPage() {
+        const hash = window.location.hash;
+        return hash.includes('/details?') || 
+               hash.includes('#!/item/item.html?') ||
+               hash.includes('/item?id=');
+    }
+
     function start() {
         console.log('[ReviewsCarousel] Starting...');
 
-        // Try to initialize immediately
+        // Try to initialize immediately if on details page
         if (document.readyState === 'complete' || document.readyState === 'interactive') {
-            setTimeout(initReviewsCarousel, 500);
+            if (isDetailsPage()) {
+                setTimeout(initReviewsCarousel, 500);
+            }
         }
 
-        // Also watch for DOM changes and page navigation
+        // Also watch for DOM changes and page navigation - BUT ONLY ON DETAILS PAGES
+        let isProcessing = false;
+        let lastItemId = null; // Track last processed item to avoid duplicate work
         const observer = new MutationObserver(() => {
+            if (isProcessing) return;
+            if (!isDetailsPage()) return; // ONLY run on details pages
+            
             const castCollapsible = document.querySelector('#castCollapsible');
-            if (castCollapsible && !document.querySelector('.baklava-reviews-carousel')) {
-                if (captureItemId()) {
+            const currentItemId = captureItemId();
+            
+            // Only process if: castCollapsible exists, no carousel yet, and we haven't processed this item
+            if (castCollapsible && !document.querySelector('.baklava-reviews-carousel') && currentItemId && currentItemId !== lastItemId) {
+                isProcessing = true;
+                lastItemId = currentItemId;
+                setTimeout(() => {
                     initReviewsCarousel();
-                }
+                    isProcessing = false;
+                }, 100);
             }
         });
 
@@ -258,10 +516,18 @@
             subtree: true 
         });
 
-        // Listen for hash changes (Jellyfin navigation)
+        // Listen for hash changes (Jellyfin navigation) - ONLY trigger on details pages
+        let hashChangeTimeout = null;
         window.addEventListener('hashchange', () => {
-            console.log('[ReviewsCarousel] Hash changed, will check for reviews');
-            setTimeout(() => {
+            if (!isDetailsPage()) {
+                console.log('[ReviewsCarousel] Not a details page, ignoring');
+                lastItemId = null; // Reset when leaving details page
+                return;
+            }
+            console.log('[ReviewsCarousel] Hash changed to details page, will check for reviews');
+            lastItemId = null; // Reset for new page
+            if (hashChangeTimeout) clearTimeout(hashChangeTimeout);
+            hashChangeTimeout = setTimeout(() => {
                 const castCollapsible = document.querySelector('#castCollapsible');
                 if (castCollapsible && !document.querySelector('.baklava-reviews-carousel')) {
                     initReviewsCarousel();
