@@ -5,6 +5,13 @@
 
 /* Removed ::before pseudo-element that injected a custom image into the loader */
 
+/* Hide portrait card from detail page */
+.card.portraitCard {
+    position: absolute !important;
+    top: 10rem !important;
+    left: 2rem !important;
+}
+
 /* Modal for item details (opened when clicking a title) */
 .item-detail-modal-overlay {
     position: fixed;
@@ -285,3 +292,25 @@
     }
 }
 
+/* Reset layout paddings and widths for Jellyfin detail page */
+.reset-layout {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important; /* ensures flex/shrink works correctly */
+    box-sizing: border-box;  /* safe for padding/width calculations */
+}
+
+/* Reset Jellyfin detail page layout paddings and widths */
+.detailPagePrimaryContent,
+.detailPageWrapperContainer,
+.padded-right,
+.detailPageContent {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    box-sizing: border-box; /* ensures padding/width calculation is safe */
+}

@@ -174,16 +174,7 @@
 
             // Use the Baklava metadata streams endpoint (server-side) — not Gelato path
             const url = window.ApiClient.getUrl('api/baklava/metadata/streams') + '?itemId=' + encodeURIComponent(itemId);
-            let resp;
-            try {
-                resp = await window.ApiClient.ajax({ type: 'GET', url: url, dataType: 'json' });
-            } catch (err) {
-                // Item not in library yet (404 expected for external search results) — skip streams silently
-                if (err?.status === 404 || err?.response?.status === 404) {
-                    return;
-                }
-                throw err;
-            }
+            const resp = await window.ApiClient.ajax({ type: 'GET', url: url, dataType: 'json' });
             if (!resp) return;
 
             const infoEl = qs('#item-detail-info', modal);
@@ -335,16 +326,10 @@
         closeBtn.addEventListener('click', hideModal);
         
         importBtn.addEventListener('click', async () => {
+            const title = qs('#item-detail-title', overlay).textContent;
             hideModal();
-            // Navigate to the item details if we have a Jellyfin GUID, otherwise fallback to search
-            const targetId = overlay?.dataset?.itemId || overlay?.dataset?.jellyfinId;
-            if (targetId) {
-                window.location.hash = '#/details?id=' + encodeURIComponent(targetId);
-            } else {
-                const title = qs('#item-detail-title', overlay).textContent;
-                if (title) {
-                    window.location.hash = '#/search.html?query=' + encodeURIComponent(title);
-                }
+            if (title) {
+                window.location.hash = '#/search.html?query=' + encodeURIComponent(title);
             }
         });
         
@@ -522,15 +507,14 @@
                     try {
                         if (orig && orig.parentElement) {
                             const clone = orig.cloneNode(true);
-                            // Update the status badge to show "Rejected" only on the specific badge element
-                            try {
-                                const statusEl = clone.querySelector('.request-status-badge');
-                                if (statusEl && statusEl.textContent && statusEl.textContent.trim() === 'Pending') {
-                                    statusEl.textContent = 'Rejected';
-                                    statusEl.dataset.status = 'rejected';
-                                    statusEl.style.background = 'rgba(244, 67, 54, 0.95)';
+                            // Update the status badge to show "Rejected"
+                            const badges = clone.querySelectorAll('div');
+                            for (const badge of badges) {
+                                if (badge.textContent === 'Pending') {
+                                    badge.textContent = 'Rejected';
+                                    badge.style.background = 'rgba(244, 67, 54, 0.95)';
                                 }
-                            } catch (e) { /* ignore */ }
+                            }
                             rejectedDropdown.appendChild(clone);
                         }
                     } catch (e) { /* ignore */ }
@@ -542,14 +526,14 @@
                     try {
                         if (orig && orig.parentElement) {
                             const clone2 = orig.cloneNode(true);
-                            try {
-                                const statusEl2 = clone2.querySelector('.request-status-badge');
-                                if (statusEl2 && statusEl2.textContent && statusEl2.textContent.trim() === 'Pending') {
-                                    statusEl2.textContent = 'Rejected';
-                                    statusEl2.dataset.status = 'rejected';
-                                    statusEl2.style.background = 'rgba(244, 67, 54, 0.95)';
+                            // Update the status badge to show "Rejected"
+                            const badges = clone2.querySelectorAll('div');
+                            for (const badge of badges) {
+                                if (badge.textContent === 'Pending') {
+                                    badge.textContent = 'Rejected';
+                                    badge.style.background = 'rgba(244, 67, 54, 0.95)';
                                 }
-                            } catch (e) { /* ignore */ }
+                            }
                             rejectedPage.appendChild(clone2);
                         }
                     } catch (e) { /* ignore */ }
@@ -561,7 +545,16 @@
                 console.warn('[DetailsModal] moveCardToRejected failed', e);
             }
 
-            // Update server status FIRST before closing UI
+            // Close modal and dropdown
+            try { hideModal(); } catch (e) { }
+            try { 
+                const dd = document.querySelector('.requests-dropdown'); 
+                if (dd) dd.style.display = 'none'; 
+                const back = document.querySelector('.requests-backdrop'); 
+                if (back) back.style.display = 'none';
+            } catch (e) { }
+
+            // Update server status
             if (requestId && window.RequestManager && typeof window.RequestManager.updateStatus === 'function') {
                 try {
                     let rejecter = null;
@@ -574,14 +567,11 @@
                             rejecter = user?.Name || null; 
                         } catch { rejecter = null; }
                     }
-                    await window.RequestManager.updateStatus(requestId, 'rejected', rejecter);
+                    window.RequestManager.updateStatus(requestId, 'rejected', rejecter).catch(() => {});
                 } catch (e) { 
                     console.warn('[DetailsModal] Failed to update request status:', e); 
                 }
             }
-
-            // Close modal but DON'T close dropdown - let admin continue reviewing
-            try { hideModal(); } catch (e) { }
         });
 
         removeBtn.addEventListener('click', async () => {
@@ -621,16 +611,6 @@
         const user = await window.ApiClient.getUser(userId);
         const isAdmin = user?.Policy?.IsAdministrator;
         
-        // Check if non-admin requests are disabled
-        let disableNonAdminRequests = false;
-        try {
-            const configUrl = window.ApiClient.getUrl('api/baklava/config');
-            const configResponse = await window.ApiClient.ajax({ type: 'GET', url: configUrl, dataType: 'json' });
-            disableNonAdminRequests = configResponse?.disableNonAdminRequests === true;
-        } catch (e) {
-            console.warn('[DetailsModal] Could not fetch config:', e);
-        }
-        
         if (inLibrary) {
             importBtn.style.display = 'none';
             requestBtn.style.display = 'none';
@@ -641,16 +621,8 @@
                 importBtn.style.display = 'block';
                 requestBtn.style.display = 'none';
             } else {
-                // Non-admin user
-                if (disableNonAdminRequests) {
-                    // Show Import button instead of Request when disabled
-                    importBtn.style.display = 'block';
-                    requestBtn.style.display = 'none';
-                } else {
-                    // Normal behavior - show Request button
-                    importBtn.style.display = 'none';
-                    requestBtn.style.display = 'block';
-                }
+                importBtn.style.display = 'none';
+                requestBtn.style.display = 'block';
             }
         }
     }
@@ -672,23 +644,13 @@
             qs('#item-detail-info', m).innerHTML = '';
             qs('#item-detail-reviews', m).innerHTML = '';
             qs('#item-detail-image', m).style.backgroundImage = '';
-            // Reset all buttons to initial state
-            const importBtn = qs('#item-detail-import', m);
-            const requestBtn = qs('#item-detail-request', m);
-            const approveBtn = qs('#item-detail-approve', m);
-            const rejectBtn = qs('#item-detail-reject', m);
-            const viewRequestsBtn = qs('#item-detail-view-requests', m);
-            const removeBtn = qs('#item-detail-remove', m);
-            const openBtn = qs('#item-detail-open', m);
-            
-            if (importBtn) { importBtn.style.display = 'none'; importBtn.disabled = false; importBtn.textContent = 'Import'; importBtn.style.background = '#1e90ff'; }
-            if (requestBtn) { requestBtn.style.display = 'none'; requestBtn.disabled = false; requestBtn.textContent = 'Request'; requestBtn.style.background = '#ff9800'; }
-            if (approveBtn) { approveBtn.style.display = 'none'; approveBtn.disabled = false; approveBtn.textContent = 'Approve'; approveBtn.style.background = '#4caf50'; }
-            if (rejectBtn) { rejectBtn.style.display = 'none'; rejectBtn.disabled = false; rejectBtn.textContent = 'Reject'; rejectBtn.style.background = '#ff5722'; }
-            if (viewRequestsBtn) { viewRequestsBtn.style.display = 'none'; }
-            if (removeBtn) { removeBtn.style.display = 'none'; }
-            if (openBtn) { openBtn.style.display = 'none'; }
-            
+            qs('#item-detail-import', m).style.display = 'none';
+            qs('#item-detail-request', m).style.display = 'none';
+            qs('#item-detail-approve', m).style.display = 'none';
+            qs('#item-detail-reject', m).style.display = 'none';
+            qs('#item-detail-view-requests', m).style.display = 'none';
+            qs('#item-detail-remove', m).style.display = 'none';
+            qs('#item-detail-open', m).style.display = 'none';
             const loadingOverlay = qs('#item-detail-loading-overlay', m);
             if (loadingOverlay) loadingOverlay.style.display = 'flex';
         } 
@@ -1070,17 +1032,6 @@
             
             if (ev.button !== 0 || ev.ctrlKey) return;
             
-            // Check if local search is enabled - if so, don't intercept, let it go to details page
-            const isLocalSearch = localStorage.getItem('jellyfin_local_search_enabled') === 'true';
-            if (isLocalSearch) {
-                console.log('[DetailsModal] Local search active - allowing normal navigation');
-                return; // Don't prevent default, let it navigate normally
-            }
-            
-            console.log('[DetailsModal] Intercepting click for global search');
-            ev.preventDefault();
-            ev.stopPropagation();
-
             let id = anchor.dataset.id;
             if (!id && anchor.href) {
                 const hashPart = anchor.href.split('#')[1] || '';
@@ -1094,7 +1045,21 @@
             
             if (!id) return;
 
-            console.log('[DetailsModal] Opening modal for ID:', id);
+            // Check if search toggle is set to LOCAL mode
+            // If local mode, navigate directly to details page instead of opening modal
+            const isLocalSearchMode = localStorage.getItem('jellyfin_local_search_enabled') === 'true';
+            if (isLocalSearchMode) {
+                console.log('[DetailsModal] Local search mode: navigating directly to details page');
+                ev.preventDefault();
+                ev.stopPropagation();
+                window.location.hash = '#/details?id=' + encodeURIComponent(id);
+                return;
+            }
+
+            console.log('[DetailsModal] Global search mode: opening modal');
+            ev.preventDefault();
+            ev.stopPropagation();
+
             const modal = getModal();
             populateFromCard(anchor, id, modal);
             showModal(modal);

@@ -150,8 +150,7 @@
     async function createRequestCard(request, adminView) {
         const card = document.createElement('div');
         card.className = 'request-card';
-        // Support different casing coming from server/client payloads and avoid undefined dataset
-        card.dataset.requestId = request.Id || request.id || request.requestId || '';
+        card.dataset.requestId = request.Id;
         card.style.cssText = `
             display: inline-block;
             width: 100px;
@@ -197,8 +196,6 @@
 
         if (request.Status === 'pending') {
             const statusBadge = document.createElement('div');
-            statusBadge.className = 'request-status-badge';
-            statusBadge.dataset.status = 'pending';
             statusBadge.textContent = 'Pending';
             statusBadge.style.cssText = `
                 position: absolute;
@@ -214,8 +211,6 @@
             card.appendChild(statusBadge);
         } else if (request.Status === 'approved') {
             const statusBadge = document.createElement('div');
-            statusBadge.className = 'request-status-badge';
-            statusBadge.dataset.status = 'approved';
             statusBadge.textContent = 'Approved';
             statusBadge.style.cssText = `
                 position: absolute;
@@ -231,8 +226,6 @@
             card.appendChild(statusBadge);
         } else if (request.Status === 'rejected') {
             const statusBadge = document.createElement('div');
-            statusBadge.className = 'request-status-badge';
-            statusBadge.dataset.status = 'rejected';
             statusBadge.textContent = 'Rejected';
             statusBadge.style.cssText = `
                 position: absolute;
@@ -612,6 +605,50 @@
     }
 
     // ============================================
+    // USER MENU ITEM
+    // ============================================
+
+    function addRequestsMenuItem() {
+        const userMenuSection = document.querySelector('.verticalSection .headerUsername');
+        if (!userMenuSection) return false;
+
+        const container = userMenuSection.parentElement;
+        if (!container) return false;
+
+        if (container.querySelector('.lnkMediaRequests')) return true;
+
+        const requestsLink = document.createElement('a');
+        requestsLink.className = 'emby-button lnkMediaRequests listItem-border';
+        requestsLink.href = '#';
+        requestsLink.style.cssText = 'display: block; margin: 0px; padding: 0px;';
+        
+        requestsLink.innerHTML = `
+            <div class="listItem">
+                <span class="material-icons listItemIcon listItemIcon-transparent movie_filter" aria-hidden="true"></span>
+                <div class="listItemBody">
+                    <div class="listItemBodyText">Media Requests</div>
+                </div>
+            </div>
+        `;
+
+        requestsLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            showRequestsPage();
+            const userMenuButton = document.querySelector('.headerUserButton');
+            if (userMenuButton) userMenuButton.click();
+        });
+
+        const quickConnect = container.querySelector('.lnkQuickConnectPreferences');
+        if (quickConnect) {
+            quickConnect.parentNode.insertBefore(requestsLink, quickConnect.nextSibling);
+        } else {
+            container.appendChild(requestsLink);
+        }
+
+        return true;
+    }
+
+    // ============================================
     // FULL REQUESTS PAGE
     // ============================================
 
@@ -769,26 +806,21 @@
     // EVENT LISTENERS
     // ============================================
 
-    // Use a flag to prevent duplicate event listeners
-    if (!window._baklavaRequestsInitialized) {
-        window._baklavaRequestsInitialized = true;
-        
-        document.addEventListener('mediaRequest', async (e) => {
-            const item = e.detail;
-            try {
-                await saveRequest(item);
-                // Reload both dropdown and page if visible
-                if (dropdownMenu && dropdownMenu.style.display === 'block') {
-                    await loadDropdownRequests();
-                }
-                if (document.getElementById('requestsPage')?.style.display === 'block') {
-                    await loadAndDisplayRequestsPage();
-                }
-            } catch (err) {
-                console.error('[Requests] Error saving request:', err);
+    document.addEventListener('mediaRequest', async (e) => {
+        const item = e.detail;
+        try {
+            await saveRequest(item);
+            // Reload both dropdown and page if visible
+            if (dropdownMenu && dropdownMenu.style.display === 'block') {
+                await loadDropdownRequests();
             }
-        });
-    }
+            if (document.getElementById('requestsPage')?.style.display === 'block') {
+                await loadAndDisplayRequestsPage();
+            }
+        } catch (err) {
+            console.error('[Requests] Error saving request:', err);
+        }
+    });
 
     // ============================================
     // EXPORTS
@@ -869,6 +901,13 @@
             childList: true,
             subtree: true
         });
+        
+        // NOTE: We deliberately do NOT auto-insert the requests item into the
+        // user's sidebar/menu. The header button provides access to requests,
+        // and inserting the same action in the user menu caused duplicate
+        // controls. Keep `addRequestsMenuItem()` available for manual calls if
+        // needed, but do not schedule it automatically.
+        
     }
 
     // Start initialization

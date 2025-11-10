@@ -372,6 +372,12 @@
                 font-family: monospace;
                 position: relative;
             }
+            
+            /* Filename text container (separate from arrows) */
+            .stc-filename-text {
+                display: block;
+                padding: 0 40px; /* Space for arrows on both sides */
+            }
 
             /* When arrows are embedded into filename container they are positioned at its bottom corners */
             .stc-filename .stc-arrow {
@@ -557,9 +563,9 @@
             // Update filename display if version select
             if (type === 'version') {
                 const selectedOption = Array.from(select.options).find(opt => opt.value === value);
-                const filenameDiv = wrapper.querySelector('.stc-filename');
-                if (selectedOption && filenameDiv) {
-                    filenameDiv.textContent = selectedOption.textContent;
+                const filenameText = wrapper.querySelector('.stc-filename-text');
+                if (selectedOption && filenameText) {
+                    filenameText.textContent = selectedOption.textContent;
                 }
             }
         }
@@ -709,7 +715,12 @@
                 // For version: filename div with arrows inside, no controls div
                 const filenameDiv = document.createElement('div');
                 filenameDiv.className = 'stc-filename';
-                filenameDiv.textContent = '';
+                
+                // Create text container for filename (separate from arrows)
+                const filenameText = document.createElement('span');
+                filenameText.className = 'stc-filename-text';
+                filenameDiv.appendChild(filenameText);
+                
                 wrapper.appendChild(filenameDiv);
 
                 cardsContainer = document.createElement('div');
