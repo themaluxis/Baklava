@@ -74,6 +74,16 @@
                             When enabled, the player will show native dropdown menus for selecting versions, audio, and subtitle tracks instead of the carousel card interface.
                         </p>
                     </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input id="showReviewsCarousel" type="checkbox" style="margin-right: 8px;">
+                            <span style="color:#ddd;">Show TMDB reviews carousel on item details pages</span>
+                        </label>
+                        <p style="margin: 4px 0 0 28px; font-size: 12px; color: #999;">
+                            When enabled, a carousel of TMDB user reviews will be displayed above the Cast & Crew section on movie and TV show details pages.
+                        </p>
+                    </div>
                 </div>
 
                 <div>
@@ -92,6 +102,7 @@
                                 document.getElementById('forceTVClientLocalSearch').checked = response?.forceTVClientLocalSearch === true;
                                 document.getElementById('disableNonAdminRequests').checked = response?.disableNonAdminRequests === true;
                                 document.getElementById('useDropdownsInsteadOfCards').checked = response?.useDropdownsInsteadOfCards === true;
+                                document.getElementById('showReviewsCarousel').checked = response?.showReviewsCarousel !== false;
                                 return;
                             }
 
@@ -104,6 +115,7 @@
                             document.getElementById('forceTVClientLocalSearch').checked = json.forceTVClientLocalSearch === true;
                             document.getElementById('disableNonAdminRequests').checked = json.disableNonAdminRequests === true;
                             document.getElementById('useDropdownsInsteadOfCards').checked = json.useDropdownsInsteadOfCards === true;
+                            document.getElementById('showReviewsCarousel').checked = json.showReviewsCarousel !== false;
                         }catch(e){ console.error(e); }
                     }
 
@@ -113,13 +125,15 @@
                         const forceTVLocal = document.getElementById('forceTVClientLocalSearch').checked;
                         const disableNonAdminRequests = document.getElementById('disableNonAdminRequests').checked;
                         const useDropdownsInsteadOfCards = document.getElementById('useDropdownsInsteadOfCards').checked;
+                        const showReviewsCarousel = document.getElementById('showReviewsCarousel').checked;
                         
                         const configData = {
                             tmdbApiKey: key,
                             enableSearchFilter: enableFilter,
                             forceTVClientLocalSearch: forceTVLocal,
                             disableNonAdminRequests: disableNonAdminRequests,
-                            useDropdownsInsteadOfCards: useDropdownsInsteadOfCards
+                            useDropdownsInsteadOfCards: useDropdownsInsteadOfCards,
+                            showReviewsCarousel: showReviewsCarousel
                         };
                         
                         try {

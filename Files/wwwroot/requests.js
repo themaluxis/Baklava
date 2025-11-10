@@ -580,10 +580,18 @@
         const badge = document.querySelector('.requests-notification-badge');
         if (!badge) return;
         
+        // Check if ApiClient is ready
+        if (!window.ApiClient) {
+            console.warn('[Requests.updateNotificationBadge] ApiClient not ready yet');
+            return;
+        }
+        
         try {
             const requests = await fetchAllRequests();
             const username = await getCurrentUsername();
             const adminView = await checkAdmin();
+            
+            console.log('[Requests.updateNotificationBadge] Fetched', requests.length, 'total requests');
             
             let pendingCount = 0;
             
@@ -594,6 +602,8 @@
                 // For regular users: count only their own pending requests
                 pendingCount = requests.filter(r => r.Status === 'pending' && r.Username === username).length;
             }
+            
+            console.log('[Requests.updateNotificationBadge] Pending count:', pendingCount, '(admin:', adminView, ')');
             
             // Always show the badge with the count (including 0)
             badge.textContent = pendingCount > 99 ? '99+' : pendingCount.toString();
@@ -666,8 +676,15 @@
         console.log('[Requests] Button added successfully');
         
         // Update badge immediately and then periodically
-        updateNotificationBadge();
-        setInterval(updateNotificationBadge, 30000); // Update every 30 seconds
+        // Wait a bit for ApiClient to be fully ready
+        setTimeout(() => {
+            updateNotificationBadge();
+        }, 1000);
+        
+        // Update every 30 seconds
+        setInterval(() => {
+            updateNotificationBadge();
+        }, 30000);
     }
 
     // ============================================

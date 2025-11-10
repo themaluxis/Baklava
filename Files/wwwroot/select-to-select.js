@@ -9,24 +9,45 @@
 
     let currentItemId = null;
 
-    function parseVersionText(text) {
-        const qualityMatch = text.match(/(\d{3,4}p)/i);
-        const quality = qualityMatch ? qualityMatch[1] : 'Unknown';
-        const tokenRegex = /WEB-?DL|WEB|NF|DV|HEVC|HDR10\+?|HDR10|HDR|BLURAY|BLU-?RAY|BDRIP|BRRIP|X264|X265|H264|H265|UHD|REMUX/ig;
-        const tokens = (text.match(tokenRegex) || []).map(t => t.toUpperCase());
-        const versionLabel = tokens.join(' ') || 'Standard';
-        return `${quality} - ${versionLabel}`;
-    }
-
     function formatStreamTitle(stream, isAudio) {
-        if (!stream) return 'Unknown';
-        const lang = stream.language || stream.displayLanguage || 'Unknown';
-        const codec = stream.codec?.toUpperCase() || '';
-        const channels = stream.channels ? `${stream.channels}.0` : '';
-        const parts = [lang];
-        if (codec) parts.push(codec);
-        if (channels) parts.push(channels);
-        return parts.join(' | ');
+        let langCode = stream.language || stream.displayLanguage || '';
+        let lang = 'Unknown';
+        
+        if (langCode) {
+            const langMap = {
+                'eng': 'English', 'spa': 'Spanish', 'fre': 'French', 'fra': 'French',
+                'ger': 'German', 'deu': 'German', 'ita': 'Italian', 'por': 'Portuguese',
+                'rus': 'Russian', 'jpn': 'Japanese', 'kor': 'Korean', 'chi': 'Chinese',
+                'zho': 'Chinese', 'ara': 'Arabic', 'hin': 'Hindi', 'tur': 'Turkish',
+                'pol': 'Polish', 'dut': 'Dutch', 'nld': 'Dutch', 'swe': 'Swedish',
+                'nor': 'Norwegian', 'dan': 'Danish', 'fin': 'Finnish', 'gre': 'Greek',
+                'ell': 'Greek', 'heb': 'Hebrew', 'cze': 'Czech', 'ces': 'Czech',
+                'hun': 'Hungarian', 'rum': 'Romanian', 'ron': 'Romanian', 'tha': 'Thai',
+                'vie': 'Vietnamese', 'ind': 'Indonesian', 'may': 'Malay', 'msa': 'Malay',
+                'ukr': 'Ukrainian', 'bul': 'Bulgarian', 'hrv': 'Croatian', 'srp': 'Serbian',
+                'slv': 'Slovenian', 'cat': 'Catalan'
+            };
+            
+            const lowerCode = langCode.toLowerCase();
+            lang = langMap[lowerCode] || (langCode.charAt(0).toUpperCase() + langCode.slice(1).toLowerCase());
+        }
+        
+        const codec = (stream.codec || '').toUpperCase();
+        
+        if (isAudio) {
+            const channels = stream.channels || '';
+            const parts = [lang];
+            if (codec) parts.push(codec);
+            if (channels) parts.push(`${channels}.0`);
+            return parts.join(' | ');
+        } else {
+            const title = stream.title || '';
+            const forced = stream.isForced ? ' [Forced]' : '';
+            const parts = [lang];
+            if (codec) parts.push(codec);
+            if (title && !title.toLowerCase().includes(lang.toLowerCase())) parts.push(title);
+            return parts.join(' | ') + forced;
+        }
     }
 
     async function fetchStreams(itemId, mediaSourceId) {
@@ -48,131 +69,184 @@
     }
 
     async function populateTrackSelects(mediaSourceId) {
-        if (!currentItemId) return;
-        
-        const streams = await fetchStreams(currentItemId, mediaSourceId);
-        if (!streams) return;
-
-        const audioSelect = document.querySelector('select#selectAudioTrack');
-        const subtitleSelect = document.querySelector('select#selectSubtitleTrack');
-
-        if (audioSelect && streams.audio && streams.audio.length > 0) {
-            const currentValue = audioSelect.value;
-            audioSelect.innerHTML = '';
-            streams.audio.forEach(stream => {
-                const option = document.createElement('option');
-                option.value = stream.index;
-                option.textContent = formatStreamTitle(stream, true);
-                if (stream.index == currentValue) option.selected = true;
-                audioSelect.appendChild(option);
-            });
+        if (!currentItemId) {
+            console.warn('[SelectToSelect] No itemId available');
+            return;
         }
 
-        if (subtitleSelect && streams.subs && streams.subs.length > 0) {
-            const currentValue = subtitleSelect.value;
-            subtitleSelect.innerHTML = '<option value="-1">None</option>';
-            streams.subs.forEach(stream => {
-                const option = document.createElement('option');
-                option.value = stream.index;
-                option.textContent = formatStreamTitle(stream, false);
-                if (stream.index == currentValue) option.selected = true;
-                subtitleSelect.appendChild(option);
-            });
+        const audioSelect = document.querySelector('select.selectAudio');
+        const subtitleSelect = document.querySelector('select.selectSubtitles');
+
+        // Set to disabled with loading placeholder immediately
+        if (audioSelect) {
+            audioSelect.innerHTML = '';
+            const loadingOption = document.createElement('option');
+            loadingOption.value = '-1';
+            loadingOption.textContent = 'Loading...';
+            loadingOption.disabled = true;
+            loadingOption.selected = true;
+            audioSelect.appendChild(loadingOption);
+            audioSelect.disabled = true;
+        }
+
+        if (subtitleSelect) {
+            subtitleSelect.innerHTML = '';
+            const loadingOption = document.createElement('option');
+            loadingOption.value = '-1';
+            loadingOption.textContent = 'Loading...';
+            loadingOption.disabled = true;
+            loadingOption.selected = true;
+            subtitleSelect.appendChild(loadingOption);
+            subtitleSelect.disabled = true;
+        }
+
+        console.log('[SelectToSelect] Fetching streams for itemId:', currentItemId, 'mediaSourceId:', mediaSourceId);
+        const streams = await fetchStreams(currentItemId, mediaSourceId);
+        
+        if (!streams) {
+            console.error('[SelectToSelect] Failed to fetch streams');
+            if (audioSelect) {
+                audioSelect.innerHTML = '';
+                const emptyOption = document.createElement('option');
+                emptyOption.value = '-1';
+                emptyOption.textContent = 'No audio tracks';
+                emptyOption.disabled = true;
+                emptyOption.selected = true;
+                audioSelect.appendChild(emptyOption);
+                audioSelect.disabled = true;
+            }
+            if (subtitleSelect) {
+                subtitleSelect.innerHTML = '';
+                const offOption = document.createElement('option');
+                offOption.value = '-1';
+                offOption.textContent = 'Off';
+                offOption.selected = true;
+                subtitleSelect.appendChild(offOption);
+                subtitleSelect.disabled = false;
+            }
+            return;
+        }
+        
+        // Populate audio tracks
+        if (audioSelect) {
+            audioSelect.innerHTML = '';
+            if (streams.audio && streams.audio.length > 0) {
+                streams.audio.forEach((track, idx) => {
+                    const option = document.createElement('option');
+                    option.value = String(track.index);
+                    option.textContent = formatStreamTitle(track, true);
+                    if (idx === 0) option.selected = true;
+                    audioSelect.appendChild(option);
+                });
+                audioSelect.disabled = false;
+            } else {
+                const emptyOption = document.createElement('option');
+                emptyOption.value = '-1';
+                emptyOption.textContent = 'No audio tracks';
+                emptyOption.disabled = true;
+                emptyOption.selected = true;
+                audioSelect.appendChild(emptyOption);
+                audioSelect.disabled = true;
+            }
+        }
+        
+        // Populate subtitle tracks
+        if (subtitleSelect) {
+            subtitleSelect.innerHTML = '';
+            const offOption = document.createElement('option');
+            offOption.value = '-1';
+            offOption.textContent = 'Off';
+            offOption.selected = true;
+            subtitleSelect.appendChild(offOption);
+            
+            if (streams.subs && streams.subs.length > 0) {
+                streams.subs.forEach((track) => {
+                    const option = document.createElement('option');
+                    option.value = String(track.index);
+                    option.textContent = formatStreamTitle(track, false);
+                    subtitleSelect.appendChild(option);
+                });
+                subtitleSelect.disabled = false;
+            } else {
+                subtitleSelect.disabled = false;
+            }
         }
     }
 
-    function enhanceSelects() {
-        const versionSelect = document.querySelector('select#selectMediaSource');
-        const audioSelect = document.querySelector('select#selectAudioTrack');
-        const subtitleSelect = document.querySelector('select#selectSubtitleTrack');
+    function captureItemId() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlId = urlParams.get('id');
+        if (urlId) {
+            currentItemId = urlId;
+            console.log('[SelectToSelect] Captured itemId from URL:', currentItemId);
+            return;
+        }
         
-        if (versionSelect && !versionSelect._stcEnhanced) {
-            const versionLabel = document.createElement('div');
-            versionLabel.className = 'stc-select-label';
-            versionLabel.style.cssText = 'font-size: 1.1em; font-weight: 500; color: rgba(255,255,255,0.9); margin: 12px 0 8px 0;';
-            versionLabel.textContent = 'Version';
-            
-            const filenameDiv = document.createElement('div');
-            filenameDiv.className = 'stc-filename';
-            filenameDiv.style.cssText = 'margin: 8px 0; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 4px; color: rgba(255,255,255,0.6); font-size: 12px; text-align: center; font-family: monospace;';
-            
-            const container = versionSelect.closest('.selectContainer');
-            if (container) {
-                container.parentNode.insertBefore(versionLabel, container);
-                container.parentNode.insertBefore(filenameDiv, container);
-            }
-            
-            versionSelect._stcFilename = filenameDiv;
-            versionSelect._stcLabel = versionLabel;
+        const urlMatch = window.location.href.match(/[?&]id=([a-f0-9-]+)/i);
+        if (urlMatch) {
+            currentItemId = urlMatch[1].replace(/-/g, '');
+            console.log('[SelectToSelect] Captured itemId from URL match:', currentItemId);
+            return;
+        }
+        
+        console.warn('[SelectToSelect] No itemId found');
+    }
+
+    async function enhanceSelects() {
+        const versionSelect = document.querySelector('select.selectSource');
+        if (!versionSelect) return;
+        
+        captureItemId();
+
+        if (!versionSelect._stcEnhanced) {
             versionSelect._stcEnhanced = true;
-            
-            const updateFilename = () => {
-                const selectedOption = versionSelect.options[versionSelect.selectedIndex];
-                if (selectedOption) {
-                    const originalText = selectedOption.getAttribute('data-original') || selectedOption.textContent;
-                    filenameDiv.textContent = originalText;
-                }
-            };
-            
-            Array.from(versionSelect.options).forEach(option => {
-                if (!option.hasAttribute('data-original')) {
-                    option.setAttribute('data-original', option.textContent);
-                    option.textContent = parseVersionText(option.textContent);
-                }
-            });
-            
-            updateFilename();
-            
+
+            // Add filename display below version select
+            const versionContainer = versionSelect.closest('.selectContainer');
+            if (versionContainer && !versionContainer.querySelector('.stc-filename')) {
+                const filenameDiv = document.createElement('div');
+                filenameDiv.className = 'stc-filename';
+                filenameDiv.style.cssText = 'margin: 8px 0; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 4px; color: rgba(255,255,255,0.6); font-size: 12px; text-align: center; font-family: monospace;';
+                
+                const updateFilename = () => {
+                    const selectedOption = versionSelect.options[versionSelect.selectedIndex];
+                    if (selectedOption) {
+                        filenameDiv.textContent = selectedOption.textContent;
+                    }
+                };
+                
+                updateFilename();
+                versionSelect.addEventListener('change', updateFilename);
+                
+                versionContainer.parentNode.insertBefore(filenameDiv, versionContainer.nextSibling);
+            }
+
+            // Fetch streams immediately on first load
             const initialMediaSourceId = versionSelect.value;
-            if (initialMediaSourceId) {
+            if (initialMediaSourceId && currentItemId) {
                 populateTrackSelects(initialMediaSourceId);
             }
-            
+
+            // Re-fetch when version changes
             versionSelect.addEventListener('change', () => {
-                updateFilename();
                 const mediaSourceId = versionSelect.value;
-                populateTrackSelects(mediaSourceId);
+                if (mediaSourceId && currentItemId) {
+                    populateTrackSelects(mediaSourceId);
+                }
             });
-        }
-        
-        if (audioSelect && !audioSelect._stcLabel) {
-            const audioLabel = document.createElement('div');
-            audioLabel.className = 'stc-select-label';
-            audioLabel.style.cssText = 'font-size: 1.1em; font-weight: 500; color: rgba(255,255,255,0.9); margin: 12px 0 8px 0;';
-            audioLabel.textContent = 'Audio Track';
-            
-            const audioContainer = audioSelect.closest('.selectContainer');
-            if (audioContainer) {
-                audioContainer.parentNode.insertBefore(audioLabel, audioContainer);
-            }
-            audioSelect._stcLabel = audioLabel;
-        }
-        
-        if (subtitleSelect && !subtitleSelect._stcLabel) {
-            const subtitleLabel = document.createElement('div');
-            subtitleLabel.className = 'stc-select-label';
-            subtitleLabel.style.cssText = 'font-size: 1.1em; font-weight: 500; color: rgba(255,255,255,0.9); margin: 12px 0 8px 0;';
-            subtitleLabel.textContent = 'Subtitles';
-            
-            const subtitleContainer = subtitleSelect.closest('.selectContainer');
-            if (subtitleContainer) {
-                subtitleContainer.parentNode.insertBefore(subtitleLabel, subtitleContainer);
-            }
-            subtitleSelect._stcLabel = subtitleLabel;
         }
     }
 
     function start() {
-        const urlParams = new URLSearchParams(window.location.search);
-        currentItemId = urlParams.get('id');
-        
+        captureItemId();
+
         const observer = new MutationObserver(() => {
             if (document.body.classList.contains('stc-show-selects')) {
                 enhanceSelects();
             }
         });
         observer.observe(document.body, { childList: true, subtree: true });
-        
+
         if (document.body.classList.contains('stc-show-selects')) {
             enhanceSelects();
         }

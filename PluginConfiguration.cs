@@ -38,5 +38,8 @@ namespace Baklava
 
         // UI preference: use dropdown selects instead of carousel cards
         public bool UseDropdownsInsteadOfCards { get; set; } = false;
+
+        // Show TMDB reviews carousel on item details pages
+        public bool ShowReviewsCarousel { get; set; } = true;
     }
 }

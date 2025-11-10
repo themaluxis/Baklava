@@ -29,6 +29,7 @@ namespace Baklava
                 "details-modal.js",    // Modal & TMDB metadata integration
                 "library-status.js",   // Library presence / status UI
                 selectScript,          // Playback streams UI (cards or dropdowns)
+                "reviews-carousel.js", // TMDB reviews carousel (works with both modes)
                 "requests.js",         // Consolidated requests manager, header button, menu
                 "search-toggle.js"     // Search toggle globe icon
             };
