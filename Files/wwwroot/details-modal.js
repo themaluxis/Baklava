@@ -473,10 +473,24 @@
             // the modal (prefers Jellyfin item id when available).
             setTimeout(() => {
                 try { hideModal(); } catch (e) { /* ignore */ }
-                const targetId = overlay?.dataset?.itemId || overlay?.dataset?.jellyfinId || overlay?.dataset?.tmdbId || overlay?.dataset?.imdbId;
-                if (targetId) {
+
+                // Prefer a Jellyfin GUID if available. If not present (we only have TMDB/IMDB),
+                // the details route won't resolve — fall back to a search for the title so the
+                // user can find the item once import completes.
+                const candidate = overlay?.dataset?.itemId || overlay?.dataset?.jellyfinId || overlay?.dataset?.tmdbId || overlay?.dataset?.imdbId || '';
+
+                // Simple GUID check (Jellyfin uses GUIDs for item ids)
+                const isGuid = /^[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}$/.test(candidate);
+
+                if (isGuid) {
                     // Navigate to Jellyfin details route
-                    window.location.hash = '#/details?id=' + encodeURIComponent(targetId);
+                    window.location.hash = '#/details?id=' + encodeURIComponent(candidate);
+                } else {
+                    // Fallback: open a search for the title so user can find the item later
+                    const title = (qs('#item-detail-title', overlay)?.textContent || '').trim();
+                    if (title) {
+                        window.location.hash = '#/search.html?query=' + encodeURIComponent(title);
+                    }
                 }
             }, 250);
         });

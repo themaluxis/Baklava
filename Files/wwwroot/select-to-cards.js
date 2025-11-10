@@ -434,7 +434,11 @@
         return card;
     }
 
-    function createArrows(controlsDiv, cardsContainer) {
+    // placementContainer: where to append the arrows (can be controls div or filename div)
+    function createArrows(placementContainer, cardsContainer) {
+        // Avoid creating duplicate arrows if they already exist in the placement container
+        if (placementContainer.querySelector('.stc-arrow')) return;
+
         const leftArrow = document.createElement('button');
         leftArrow.className = 'stc-arrow stc-arrow-left';
         leftArrow.innerHTML = '‹';
@@ -444,27 +448,44 @@
         rightArrow.className = 'stc-arrow stc-arrow-right';
         rightArrow.innerHTML = '›';
         rightArrow.setAttribute('aria-label', 'Next');
-        
+
+        // If arrows are being placed inside the filename container, anchor them to its bottom
+        const isFilenamePlacement = placementContainer.classList && placementContainer.classList.contains('stc-filename');
+        if (isFilenamePlacement) {
+            // make placement relatively positioned so absolute arrows are positioned to its bottom
+            placementContainer.style.position = placementContainer.style.position || 'relative';
+            leftArrow.style.position = 'absolute';
+            leftArrow.style.bottom = '6px';
+            leftArrow.style.left = '6px';
+            rightArrow.style.position = 'absolute';
+            rightArrow.style.bottom = '6px';
+            rightArrow.style.right = '6px';
+        }
+
         const updateArrows = () => {
             leftArrow.disabled = cardsContainer.scrollLeft <= 0;
             rightArrow.disabled = cardsContainer.scrollLeft >= cardsContainer.scrollWidth - cardsContainer.offsetWidth - 1;
         };
-        
+
         leftArrow.addEventListener('click', () => {
             cardsContainer.scrollBy({ left: -300, behavior: 'smooth' });
             setTimeout(updateArrows, 100);
         });
-        
+
         rightArrow.addEventListener('click', () => {
             cardsContainer.scrollBy({ left: 300, behavior: 'smooth' });
             setTimeout(updateArrows, 100);
         });
-        
-        cardsContainer.addEventListener('scroll', debounce(updateArrows, 100));
-        
-        controlsDiv.appendChild(leftArrow);
-        controlsDiv.appendChild(rightArrow);
-        
+
+        // Guard against attaching multiple scroll listeners to the same cards container
+        if (!cardsContainer.dataset.stcScrollBound) {
+            cardsContainer.addEventListener('scroll', debounce(updateArrows, 100));
+            cardsContainer.dataset.stcScrollBound = '1';
+        }
+
+        placementContainer.appendChild(leftArrow);
+        placementContainer.appendChild(rightArrow);
+
         setTimeout(updateArrows, 100);
     }
 
@@ -643,11 +664,20 @@
         if (!wrapper) {
             wrapper = document.createElement('div');
             wrapper.className = 'stc-wrapper';
-            
-            // Create controls div above carousel
+
+            // For version carousel: filename sits at the top and will host the arrows
+            let filenameDiv = null;
+            if (type === 'version') {
+                filenameDiv = document.createElement('div');
+                filenameDiv.className = 'stc-filename';
+                // ensure it's first child
+                wrapper.appendChild(filenameDiv);
+            }
+
+            // Create controls div (used for audio/subtitle labels and fallback arrow placement)
             controlsDiv = document.createElement('div');
             controlsDiv.className = 'stc-controls';
-            
+
             // Add label only for audio and subtitle tracks
             if (type === 'audio' || type === 'subtitle') {
                 const labelDiv = document.createElement('div');
@@ -655,14 +685,13 @@
                 labelDiv.textContent = type === 'audio' ? 'Audio Track' : 'Subtitles';
                 controlsDiv.appendChild(labelDiv);
             }
-            
+
             wrapper.appendChild(controlsDiv);
-            
+
             cardsContainer = document.createElement('div');
             cardsContainer.className = 'stc-cards';
-            
             wrapper.appendChild(cardsContainer);
-            
+
             // Insert after the select's container
             const selectContainer = select.closest('.selectContainer');
             if (selectContainer) {
@@ -671,12 +700,19 @@
                 const form = select.closest('form');
                 if (form) form.appendChild(wrapper);
             }
-            
+
             select._stcWrapper = wrapper;
             select._stcCards = cardsContainer;
             select._stcControls = controlsDiv;
-            
-            createArrows(controlsDiv, cardsContainer);
+            // keep a reference to filename if created
+            if (filenameDiv) select._stcFilename = filenameDiv;
+
+            // Place arrows inside filename for version carousels, otherwise put into controls
+            if (type === 'version') {
+                createArrows(filenameDiv, cardsContainer);
+            } else {
+                createArrows(controlsDiv, cardsContainer);
+            }
         }
         
         // Clear and populate cards
@@ -691,20 +727,29 @@
             cardsContainer.appendChild(createCard(option, type, select));
         });
         
-        // Add filename display if version select
+        // Add/update filename display if version select
         if (type === 'version' && select.options.length > 0) {
             const selectedOption = Array.from(select.options).find(opt => opt.selected) || select.options[0];
             if (selectedOption && selectedOption.textContent) {
-                // Remove existing filename if any
-                const existingFilename = wrapper.querySelector('.stc-filename');
-                if (existingFilename) {
-                    existingFilename.remove();
+                let filenameDiv = wrapper.querySelector('.stc-filename') || select._stcFilename;
+                if (!filenameDiv) {
+                    filenameDiv = document.createElement('div');
+                    filenameDiv.className = 'stc-filename';
+                    // insert as first child so filename is at the top
+                    wrapper.insertBefore(filenameDiv, wrapper.firstChild);
+                    select._stcFilename = filenameDiv;
                 }
-                
-                const filenameDiv = document.createElement('div');
-                filenameDiv.className = 'stc-filename';
+
+                // Update text
                 filenameDiv.textContent = selectedOption.textContent;
-                wrapper.appendChild(filenameDiv);
+
+                // Ensure arrows are inside the filename container (move from controls if needed)
+                // Remove any arrows in controlsDiv
+                controlsDiv.querySelectorAll('.stc-arrow').forEach(a => a.remove());
+                // If filename doesn't already have arrows, create them
+                if (!filenameDiv.querySelector('.stc-arrow')) {
+                    createArrows(filenameDiv, cardsContainer);
+                }
             }
         }
         
