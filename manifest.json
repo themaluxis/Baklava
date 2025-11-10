@@ -9,6 +9,15 @@
     "imageUrl": "https://raw.githubusercontent.com/j4ckgrey/Baklava/main/Baklava.png",
     "versions": [
       {
+        "version": "0.1.12",
+        "changelog": "Fix: arrows now properly embedded in filename div for version carousel; cards overflow containment fixed; config toggle for cards vs dropdowns now functional; detail page layout improved; code cleanup with reduced redundancy",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/j4ckgrey/Baklava/releases/download/v0.1.12/baklava_0.1.12.zip",
+        "checksum": "138623d2f5784c01291557a9ed34a58e",
+        "checksumType": "md5",
+        "timestamp": "2025-11-10T15:00:00Z"
+      },
+      {
         "version": "0.1.11",
         "changelog": "Fix: infinite transform loop prevention; plugin logo 404 fixed; added UI mode toggle for cards vs dropdowns; improved script double-load prevention",
         "targetAbi": "10.11.0.0",

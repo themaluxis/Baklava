@@ -168,15 +168,21 @@
         style.textContent = `
             /* Hide original select containers */
             form.trackSelections .selectContainer { display: none !important; }
-            form.trackSelections { max-width: none !important; width: 100% !important; }
+            form.trackSelections { 
+                max-width: 1200px !important; 
+                width: 100% !important; 
+                margin: 0 auto !important;
+            }
             
             /* Carousel wrapper */
             .stc-wrapper {
                 position: relative;
                 margin: 8px 0;
+                max-width: 100%;
+                overflow: hidden;
             }
             
-            /* Control bar for arrows and label */
+            /* Control bar for arrows and label (audio/subtitle only) */
             .stc-controls {
                 display: flex;
                 align-items: center;
@@ -185,7 +191,7 @@
                 min-height: 32px;
             }
             
-            /* Carousel label (only for audio and subtitle) */
+            /* Carousel label */
             .stc-label {
                 font-size: 1.1em;
                 font-weight: 500;
@@ -194,7 +200,7 @@
                 flex: 1;
             }
             
-            /* Navigation arrows */
+            /* Navigation arrows - default for audio/subtitle in controls */
             .stc-arrow {
                 width: 32px;
                 height: 32px;
@@ -207,6 +213,7 @@
                 align-items: center;
                 justify-content: center;
                 transition: background 0.15s;
+                border-radius: 4px;
             }
             
             .stc-arrow:hover:not(:disabled) {
@@ -218,8 +225,9 @@
                 cursor: default;
             }
             
-            .stc-arrow.stc-arrow-left { order: -1; }
-            .stc-arrow.stc-arrow-right { order: 1; }
+            /* In controls, arrows positioned left and right */
+            .stc-controls .stc-arrow.stc-arrow-left { order: -1; }
+            .stc-controls .stc-arrow.stc-arrow-right { order: 1; }
             
             /* Cards container */
             .stc-cards {
@@ -228,9 +236,9 @@
                 overflow-x: auto;
                 scroll-behavior: smooth;
                 padding: 8px 4px;
+                max-width: 100%;
                 scrollbar-width: none;
                 -ms-overflow-style: none;
-                position: relative;
             }
             .stc-cards::-webkit-scrollbar { display: none; }
             
@@ -388,7 +396,7 @@
             /* Toggle to show original selects */
             body.stc-show-selects form.trackSelections .selectContainer { display: block !important; }
             
-            /* Separator line after carousels */
+            /* Separator line between carousels */
             .stc-separator {
                 margin: 20px 0;
                 height: 1px;
@@ -396,17 +404,22 @@
                 border: none;
             }
 
-            /* Center single carousel when it's the only one in form */
-            form.trackSelections .stc-wrapper:only-of-type {
-                max-width: 900px;
-                margin-left: auto;
-                margin-right: auto;
-            }
-
-            /* Detail page layout fixes - make primary content full width when alone */
+            /* Detail page layout restructure */
             .detailPagePrimaryContent {
+                display: flex;
+                flex-direction: column;
                 width: 100% !important;
                 max-width: none !important;
+            }
+            
+            /* Move details/info section above player form */
+            .detailPagePrimaryContent .detailSection {
+                order: 2;
+            }
+            
+            .detailPagePrimaryContent .itemDetailsGroup {
+                order: 1;
+                margin-bottom: 2em;
             }
         `;
         
@@ -702,38 +715,33 @@
             wrapper = document.createElement('div');
             wrapper.className = 'stc-wrapper';
             
-            // Create controls div above carousel
-            controlsDiv = document.createElement('div');
-            controlsDiv.className = 'stc-controls';
-            
-            // Add label only for audio and subtitle tracks
-            if (type === 'audio' || type === 'subtitle') {
-                const labelDiv = document.createElement('div');
-                labelDiv.className = 'stc-label';
-                labelDiv.textContent = type === 'audio' ? 'Audio Track' : 'Subtitles';
-                controlsDiv.appendChild(labelDiv);
-            }
-            
-            // For version selects, create filename display above controls and embed arrows inside filename
+            // For version selects, create filename display with arrows inside it
             if (type === 'version') {
                 const filenameDiv = document.createElement('div');
                 filenameDiv.className = 'stc-filename';
                 filenameDiv.textContent = '';
-                // Append filename at top, then controls, then cards
                 wrapper.appendChild(filenameDiv);
-                wrapper.appendChild(controlsDiv);
 
                 cardsContainer = document.createElement('div');
                 cardsContainer.className = 'stc-cards';
                 wrapper.appendChild(cardsContainer);
-                // create arrows embedded into filename
-                createArrows(controlsDiv, cardsContainer, { appendTo: filenameDiv });
+                
+                // Create arrows inside filename div
+                createArrows(cardsContainer, cardsContainer, { appendTo: filenameDiv });
             } else {
+                // For audio/subtitle, create controls div with label and arrows
+                controlsDiv = document.createElement('div');
+                controlsDiv.className = 'stc-controls';
+                
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'stc-label';
+                labelDiv.textContent = type === 'audio' ? 'Audio Track' : 'Subtitles';
+                controlsDiv.appendChild(labelDiv);
+                
                 wrapper.appendChild(controlsDiv);
 
                 cardsContainer = document.createElement('div');
                 cardsContainer.className = 'stc-cards';
-
                 wrapper.appendChild(cardsContainer);
 
                 createArrows(controlsDiv, cardsContainer);
@@ -750,7 +758,8 @@
             
             select._stcWrapper = wrapper;
             select._stcCards = cardsContainer;
-            select._stcControls = controlsDiv;
+            if (controlsDiv) select._stcControls = controlsDiv;
+            if (type === 'version') select._stcFilename = wrapper.querySelector('.stc-filename');
         }
         
         // Clear and populate cards
