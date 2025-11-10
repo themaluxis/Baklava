@@ -334,3 +334,7 @@
 .detailRibbon {
     padding: 0 8rem !important;
 }
+
+.detailPageContent {
+    padding: 0 !important;
+}

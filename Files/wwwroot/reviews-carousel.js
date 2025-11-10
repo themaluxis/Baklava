@@ -58,9 +58,9 @@
             return;
         }
 
-        const peopleHeader = document.querySelector('#peopleHeader');
-        if (!peopleHeader) {
-            console.warn('[ReviewsCarousel] Could not find #peopleHeader');
+        const castCollapsible = document.querySelector('#castCollapsible');
+        if (!castCollapsible) {
+            console.warn('[ReviewsCarousel] Could not find #castCollapsible');
             return;
         }
 
@@ -74,12 +74,12 @@
 
         const wrapper = document.createElement('div');
         wrapper.className = 'baklava-reviews-carousel';
-        wrapper.style.cssText = 'margin: 2rem 0; padding: 1.5rem; background: rgba(0,0,0,0.3); border-radius: 8px;';
+        wrapper.style.cssText = 'margin: 2rem 8rem 0 8rem; padding: 1.5rem; border-radius: 8px; height: 400px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; align-items: space-between;';
 
         let html = '<div style="font-size: 1.3em; font-weight: 500; color: rgba(255,255,255,0.9); margin-bottom: 1rem;">Reviews</div>';
         html += '<div style="position: relative; padding: 0 50px;">';
-        html += '<button class="baklava-review-prev" style="position: absolute; left: 0; top: 50%; z-index: 10; background: rgba(30,144,255,0.8); border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; transform: translateY(-50%); font-size: 24px;">‹</button>';
-        html += '<button class="baklava-review-next" style="position: absolute; right: 0; top: 50%; z-index: 10; background: rgba(30,144,255,0.8); border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; transform: translateY(-50%); font-size: 24px;">›</button>';
+        html += '<button class="baklava-review-prev" style="position: absolute; left: 0; top: 50%; z-index: 10; background: rgba(128, 128, 128, 0.5); border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; transform: translateY(-50%); font-size: 24px;">‹</button>';
+        html += '<button class="baklava-review-next" style="position: absolute; right: 0; top: 50%; z-index: 10; background: rgba(128, 128, 128, 0.5); border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; transform: translateY(-50%); font-size: 24px;">›</button>';
         html += '<div class="baklava-review-track" style="display: flex; gap: 15px; transition: transform 0.3s ease; overflow: hidden;">';
 
         reviews.slice(0, 20).forEach(review => {
@@ -87,7 +87,7 @@
             const content = review.content || '';
             const isTrunc = content.length > 200;
             const text = isTrunc ? content.substring(0, 200) + '...' : content;
-            html += '<div class="baklava-review-card" style="flex: 0 0 calc(100% - 100px); background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);' + (isTrunc ? ' cursor: pointer;' : '') + '">';
+            html += '<div class="baklava-review-card" style="background: rgba(255,255,255,0.05); padding: 1rem; height: 300px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);' + (isTrunc ? ' cursor: pointer;' : '') + '">';
             html += '<div style="font-weight: bold; color: #fff; margin-bottom: 0.5rem;">' + escapeHtml(author) + '</div>';
             html += '<div style="color: #ccc; font-size: 13px; line-height: 1.5;">' + escapeHtml(text) + '</div>';
             html += '</div>';
@@ -97,7 +97,7 @@
         html += '<div class="baklava-review-dots" style="display: flex; justify-content: center; gap: 8px; margin-top: 1rem;"></div>';
         wrapper.innerHTML = html;
 
-        peopleHeader.parentNode.insertBefore(wrapper, peopleHeader);
+        castCollapsible.parentNode.insertBefore(wrapper, castCollapsible);
 
         // Create dots
         const dotsContainer = wrapper.querySelector('.baklava-review-dots');
@@ -245,8 +245,8 @@
 
         // Also watch for DOM changes and page navigation
         const observer = new MutationObserver(() => {
-            const peopleHeader = document.querySelector('#peopleHeader');
-            if (peopleHeader && !document.querySelector('.baklava-reviews-carousel')) {
+            const castCollapsible = document.querySelector('#castCollapsible');
+            if (castCollapsible && !document.querySelector('.baklava-reviews-carousel')) {
                 if (captureItemId()) {
                     initReviewsCarousel();
                 }
@@ -262,8 +262,8 @@
         window.addEventListener('hashchange', () => {
             console.log('[ReviewsCarousel] Hash changed, will check for reviews');
             setTimeout(() => {
-                const peopleHeader = document.querySelector('#peopleHeader');
-                if (peopleHeader && !document.querySelector('.baklava-reviews-carousel')) {
+                const castCollapsible = document.querySelector('#castCollapsible');
+                if (castCollapsible && !document.querySelector('.baklava-reviews-carousel')) {
                     initReviewsCarousel();
                 }
             }, 1000);

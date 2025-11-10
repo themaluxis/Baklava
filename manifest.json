@@ -9,6 +9,15 @@
     "imageUrl": "https://raw.githubusercontent.com/j4ckgrey/Baklava/main/Baklava.png",
     "versions": [
       {
+        "version": "0.1.20.0",
+        "changelog": "Select Dropdown UI and Audio/Sub tracks fetching",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/j4ckgrey/Baklava/releases/download/v0.1.20.0/baklava_0.1.20.0.zip",
+        "checksum": "542c92dd7072f28b22bf40678ad9b10d",
+        "checksumType": "md5",
+        "timestamp": "2025-11-10T00:30:00Z"
+      },
+      {
         "version": "0.1.19.0",
         "changelog": "Reviews Carousel",
         "targetAbi": "10.11.0.0",

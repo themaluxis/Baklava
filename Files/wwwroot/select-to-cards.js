@@ -169,6 +169,14 @@
             /* Hide original select containers */
             form.trackSelections .selectContainer { display: none !important; }
             form.trackSelections { max-width: unset !important; width: unset !important; }
+
+            /* Force trackSelections to full width so carousels and wrappers align */
+            .detailSection .trackSelections,
+            form.trackSelections,
+            .trackSelections {
+                width: 100% !important;
+                max-width: unset !important;
+            }
             
             /* Carousel wrapper */
             .stc-wrapper {
@@ -725,15 +733,34 @@
                 createArrows(controlsDiv, cardsContainer);
             }
             
-            // Insert after the select's container
+            // Insert wrapper and MOVE the select into it so our UI isn't hidden by host containers
             const selectContainer = select.closest('.selectContainer');
-            if (selectContainer) {
-                selectContainer.parentNode.insertBefore(wrapper, selectContainer.nextSibling);
+            if (selectContainer && selectContainer.parentNode) {
+                selectContainer.parentNode.insertBefore(wrapper, selectContainer);
+            } else if (select.parentNode) {
+                select.parentNode.insertBefore(wrapper, select);
             } else {
-                const form = select.closest('form');
-                if (form) form.appendChild(wrapper);
+                const form = select.closest('form') || document.body;
+                form.appendChild(wrapper);
             }
-            
+
+            // Move the select into our wrapper
+            try {
+                wrapper.appendChild(select);
+            } catch (e) {
+                console.warn('[SelectToCards] Failed to move select into wrapper:', e);
+            }
+
+            // Remove original container if it doesn't contain other selects
+            try {
+                if (selectContainer && selectContainer.parentNode) {
+                    const hasOtherSelects = selectContainer.querySelectorAll('select').length > 0;
+                    if (!hasOtherSelects) selectContainer.parentNode.removeChild(selectContainer);
+                }
+            } catch (e) {
+                console.warn('[SelectToCards] Failed to remove original selectContainer:', e);
+            }
+
             select._stcWrapper = wrapper;
             select._stcCards = cardsContainer;
             select._stcControls = controlsDiv;
@@ -774,12 +801,14 @@
             }
         }
         
-        // Add separator line after each carousel
-        const existingSeparator = wrapper.nextElementSibling;
-        if (!existingSeparator || !existingSeparator.classList.contains('stc-separator')) {
-            const separator = document.createElement('hr');
-            separator.className = 'stc-separator';
-            wrapper.parentNode.insertBefore(separator, wrapper.nextSibling);
+        // Add separator line after each carousel, skip for subtitles (last block)
+        if (type !== 'subtitle') {
+            const existingSeparator = wrapper.nextElementSibling;
+            if (!existingSeparator || !existingSeparator.classList.contains('stc-separator')) {
+                const separator = document.createElement('hr');
+                separator.className = 'stc-separator';
+                wrapper.parentNode.insertBefore(separator, wrapper.nextSibling);
+            }
         }
         
         // Auto-scroll to selected card
