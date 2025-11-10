@@ -172,8 +172,13 @@
             const itemId = modal.dataset.itemId;
             if (!itemId) return;
 
-            // Use the Baklava metadata streams endpoint (server-side) — not Gelato path
-            const url = window.ApiClient.getUrl('api/baklava/metadata/streams') + '?itemId=' + encodeURIComponent(itemId);
+            // Get the first media source ID from the item to fetch streams
+            const mediaSourceId = modal.dataset.mediaSourceId || null;
+            
+            const params = new URLSearchParams({ itemId });
+            if (mediaSourceId) params.append('mediaSourceId', mediaSourceId);
+            
+            const url = window.ApiClient.getUrl('api/baklava/metadata/streams') + '?' + params.toString();
             const resp = await window.ApiClient.ajax({ type: 'GET', url: url, dataType: 'json' });
             if (!resp) return;
 

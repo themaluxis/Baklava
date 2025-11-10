@@ -537,7 +537,12 @@
                 const selectedOption = Array.from(select.options).find(opt => opt.value === value);
                 const filenameDiv = wrapper.querySelector('.stc-filename');
                 if (selectedOption && filenameDiv) {
-                    filenameDiv.textContent = selectedOption.textContent;
+                    // Store original if not already stored
+                    if (!selectedOption.hasAttribute('data-original')) {
+                        selectedOption.setAttribute('data-original', selectedOption.textContent);
+                    }
+                    // Display the original filename
+                    filenameDiv.textContent = selectedOption.getAttribute('data-original') || selectedOption.textContent;
                 }
             }
         }
@@ -756,10 +761,15 @@
         // Add filename display if version select
         if (type === 'version' && select.options.length > 0) {
             const selectedOption = Array.from(select.options).find(opt => opt.selected) || select.options[0];
-            if (selectedOption && selectedOption.textContent) {
+            if (selectedOption) {
                 const filenameDiv = wrapper.querySelector('.stc-filename');
                 if (filenameDiv) {
-                    filenameDiv.textContent = selectedOption.textContent;
+                    // Store original filename if not already stored
+                    if (!selectedOption.hasAttribute('data-original')) {
+                        selectedOption.setAttribute('data-original', selectedOption.textContent);
+                    }
+                    // Display the original filename in the stc-filename div
+                    filenameDiv.textContent = selectedOption.getAttribute('data-original') || selectedOption.textContent;
                 }
             }
         }

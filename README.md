@@ -157,7 +157,6 @@ When **Force TV Client Local Search** is enabled:
 
 - 🐞 **Issues:** [Report a bug](https://github.com/j4ckgrey/Baklava/issues)  
 - 💬 **Discussions:** [Join the conversation](https://github.com/j4ckgrey/Baklava/discussions)  
-- 💫 **Discord:** [Join the Baklava Community](https://discord.gg/dzhMGJuf)
 
 ---
 

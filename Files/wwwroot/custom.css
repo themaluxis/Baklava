@@ -10,8 +10,6 @@
     position: absolute !important;
     top: 10rem !important;
     left: 2rem !important;
-    width: unset !important;
-    padding: unset !important;
 }
 
 /* Disable grid layout on detail section */
@@ -323,7 +321,6 @@
 
 .detailPagePrimaryContent {
     margin: 0 8rem !important;
-    margin: 0 !important;
     width: auto !important;
     max-width: none !important;
     min-width: 0 !important;
