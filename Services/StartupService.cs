@@ -8,9 +8,9 @@ namespace Baklava.Services
 {
     public class StartupService : IScheduledTask
     {
-        public string Name => "MyJellyfinPlugin Startup";
-        public string Key => "MyJellyfinPlugin.Startup";
-        public string Description => "Registers file transformations for MyJellyfinPlugin";
+        public string Name => "Baklava Startup";
+        public string Key => "Baklava.Startup";
+        public string Description => "Registers file transformations for Baklava";
         public string Category => "Startup Services";
 
         public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
