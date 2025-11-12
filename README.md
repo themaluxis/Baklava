@@ -1,5 +1,5 @@
 <h1 align="center">🍮 Baklava</h1>
-<h3 align="center">Jellyfin Media Request & Search Enhancement Plugin</h3>
+<h3 align="center">Smart Media Layer for Jellyfin</h3>
 
 <p align="center">
   <img src="Baklava.png" alt="Baklava Logo" width="200" />
@@ -7,9 +7,9 @@
 
 <p align="center">
   <i>
-    A powerful <b>Jellyfin plugin</b> that enhances media discovery and management with advanced search controls, user-to-admin media requests, 
-    and a modernized interface inspired by Stremio.  
-    Baklava acts as a smart middle layer between <b>Jellyfin</b> and <b>Gelato</b>, improving the way your server fetches, requests, and displays media.
+    A next-generation <b>Jellyfin plugin</b> that transforms how your server handles media requests, caching, and playback.
+    Baklava bridges <b>Gelato</b> and <b>Jellyfin</b> with intelligent caching, adaptive remote stream probing, 
+    and a sleek, modern interface inspired by Stremio.
   </i>
 </p>
 
@@ -17,146 +17,146 @@
 
 ## 🍯 Overview
 
-**Baklava** bridges the gap between Jellyfin and Gelato, transforming how you search, request, and interact with media.  
-Instead of allowing Gelato to auto-import or fetch media directly into Jellyfin, Baklava **intercepts and manages** those search and request actions server-side — ensuring clean, safe, and intentional imports.
+**Baklava** is both a **server-side powerhouse** and a **frontend overhaul** for Jellyfin.  
+It introduces smart caching, remote stream integration, complete user-to-admin request handling, 
+and dynamic UI enhancements for effortless media management.
 
-It’s both a **server-side enhancement** and a **frontend rework**, offering:
-- Smart media request handling between users and admins  
-- Rich media presentation (audio, subtitles, quality indicators)  
-- A Stremio-like interface for browsing versions, languages, and formats  
-- Integrated search routing between Jellyfin’s local library and Gelato’s global sources  
+Whether you're streaming from remote sources or managing requests from multiple users,  
+Baklava ensures your Jellyfin experience stays fast, reliable, and visually polished.
 
 ---
 
-## ✨ Features
+## ⚙️ Key Features
 
-### 🎬 Media Request System
-- **User Requests:** Allow users to request movies and TV series  
-- **Admin Workflow:** Approve or deny requests from a central interface  
-- **Request Tracking:** Monitor pending, approved, and fulfilled requests  
-- **Remote Track Fetching:** Pull audio/subtitle tracks dynamically from remote sources  
-- **Smart Sync:** Prevents auto-imports and uncontrolled media fetching by mediating requests between Jellyfin and Gelato  
+### 🧠 Server-Side Intelligence
 
-### 🎨 Visual & UI Enhancements
-- **Version Cards:** Replaces Jellyfin’s version/language/subtitle dropdowns with **card-style selectors** for a modern Stremio-like look  
-- **Language Parsing:** Automatically detects and displays language info from audio/subtitle track metadata  
-- **Media Quality Detection:** Parses resolution, encoding, and media type from filenames and displays them as badges  
-- **Responsive Interface:** Optimized for all clients (web, mobile, TV) with adaptive layout logic  
+#### 🔁 Adaptive Caching & Stream Handling
+Baklava enhances Jellyfin’s caching layer, allowing it to **adapt dynamically to remote streams** (ideal for Gelato users).  
+It reduces redundant probing and improves playback stability across all platforms — even TV clients.
 
-### 🔍 Enhanced Search
-- **Local vs Global Search Toggle:** Switch easily between Jellyfin’s local library and Gelato’s global sources  
-- **Smart Defaults:** Global search by default for discovery, with configurable enforcement of local search  
-- **Visual Indicator:** Globe icon (🌐) toggles between local/global mode  
-- **Server-Side Enforcement:** Automatically applies “local:” prefixes and filtering for TV clients (Android TV, Fire TV, etc.)  
+#### 🧩 Smart Probing for Tracks
+Automatically fetches **audio and subtitle tracks** from remote streams for every platform, including Android TV and Fire TV.  
+Baklava ensures your playback options are complete before the media even starts loading.
 
-### 🎯 Server-Side Processing
-- **SearchActionFilter:** Intercepts Jellyfin search requests and routes them appropriately  
-- **Gelato Integration:** Seamlessly connects to Gelato for global discovery while controlling auto-fetching  
-- **Prefix Handling:** Cleans up local/global search identifiers in requests  
-- **Configurable:** All features are toggleable from the plugin dashboard  
+> This makes it a perfect companion for the **Gelato** plugin — unlocking full hybrid-source playback.
 
 ---
 
-## 📦 Installation
+### 📬 Complete Requests System
 
-### ✅ Via Jellyfin Plugin Repository (Recommended)
+#### 🙋 User-to-Admin Requests (Jellyseerr-like)
+Baklava introduces a **fully native request system** within Jellyfin — bringing the power of Jellyseerr directly into your dashboard.  
+Users can submit requests for unavailable content, track status, and get notified upon approval or import.
+
+- Requests are stored **per user** with status tracking  
+- Admins can **approve or deny** requests via a built-in interface  
+- Works seamlessly with **manual imports** and **Gelato discovery**
+
+![Requests Window](./Screenshots/screenshot3.png)
+![Request Details](./Screenshots/screenshot4.png)
+![Admin Approval View](./Screenshots/screenshot5.png)
+
+#### ⚙️ Configurable Behavior
+From the **plugin configuration page**, you can:
+- Disable **Global Search Toggle** for TV clients (enforcing safe, local searches)
+- Toggle **Auto Import** to allow or restrict direct imports (ideal for managing user permissions)
+- Enable/disable the **Requests Feature** entirely for automation scenarios
+
+![Config Controls](./Screenshots/screenshot6.png)
+
+---
+
+### 🧭 Manual Import System
+
+Baklava introduces a **Manual Import Modal**, acting as a **middle-layer between Gelato and Jellyfin**.  
+Instead of automatically importing everything Gelato finds, Baklava opens a detailed preview modal:
+
+- Displays **cast, metadata, reviews, and artwork**  
+- Lets users confirm before import  
+- Prevents redundant or accidental imports  
+- Streamlines admin control
+
+![Manual Import Modal](./Screenshots/screenshot2.png)
+
+---
+
+### 🎨 Interface Enhancements
+
+Baklava replaces Jellyfin’s old dropdowns with modern, flexible UI components.
+
+#### 🧱 Smart Selectors
+Each version, audio, and subtitle field now uses a **responsive carousel or dropdown**, designed for clarity and speed.  
+Long filenames are truncated elegantly, with hover or click revealing full details.
+
+![Version Selector](./Screenshots/screenshot1.png)
+
+#### 🌈 Stremio-Inspired Look
+The new design blends Jellyfin’s structure with Stremio-like cues —  
+clear visual hierarchy, smooth transitions, and adaptive layouts that look great across web and TV clients.
+
+---
+
+## 🧩 Installation
+
+### ✅ Via Jellyfin Plugin Repository
 
 1. Open **Jellyfin Dashboard**  
-2. Navigate to **Plugins → Repositories**  
-3. Add repository URL: https://raw.githubusercontent.com/j4ckgrey/Baklava/main/manifest.json
-4. Go to **Catalog** and install **Baklava**  
+2. Go to **Plugins → Repositories**  
+3. Add: https://raw.githubusercontent.com/j4ckgrey/Baklava/main/manifest.json
+4. Open **Catalog**, install **Baklava**  
 5. Restart Jellyfin  
 
 ---
 
-## ⚙️ Configuration
+## 🔧 Configuration
 
-### ⚠️ Prerequisites
+### Requirements
+| Plugin | Purpose | Link |
+|--------|----------|------|
+| **Gelato** | External source search integration | [lostb1t/Gelato](https://github.com/lostb1t/Gelato) |
+| **File Transformation** | Stream transformation and compatibility | [IAmParadox27/jellyfin-plugin-file-transformation](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation) |
 
-Before installing **Baklava**, ensure the following Jellyfin plugins are installed and configured:
-
-| Plugin | Description | Link |
-|--------|--------------|------|
-| **Gelato** | External search provider used by Baklava for global discovery | [lostb1t/Gelato](https://github.com/lostb1t/Gelato) |
-| **File Transformation** | Required for certain media handling and transformations | [IAmParadox27/jellyfin-plugin-file-transformation](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation) |
-
-> ⚠️ If these plugins are missing or misconfigured, Baklava may have limited functionality.
-
----
-
-### 🔧 Plugin Settings
-
-Navigate to:  
+### Plugin Settings
+Located under:  
 **Dashboard → Plugins → Baklava**
 
-#### Search Filter Settings
-- **Enable Search Filter:** Toggle server-side search prefix handling  
-- **Force TV Client Local Search:** Automatically enforce local search for TV clients  
-
-#### TMDB Integration
-- **TMDB API Key:** For metadata lookups and poster images  
-- **Default TMDB ID:** For configuration testing  
-
----
-
-## 🚀 Usage
-
-### 🌐 Search Toggle
-
-The search toggle appears as a **globe icon** next to the search bar:
-
-| Icon | Mode | Description |
-|------|------|-------------|
-| 🌐 | Global | Searches external sources via Gelato |
-| 🚫🌐 | Local | Searches only your Jellyfin library |
-
-#### To use:
-1. Type your search query  
-2. Click the globe icon to toggle modes  
-3. Results refresh automatically  
+Includes toggles for:
+- Search filter handling  
+- Force local search for TV clients  
+- Auto import control  
+- Requests system enable/disable  
+- Advanced caching and stream probing  
 
 ---
 
-### 🙋 Media Requests
+## 🧠 How It Works
 
-#### For Users:
-1. Browse or search for media  
-2. Click **“Request”** on unavailable items  
-3. Track requests in the **Requests** dropdown  
-4. Get notified when approved  
+Baklava intercepts Jellyfin search, playback, and request actions,  
+and intelligently routes them through its own optimized logic layer.
 
-#### For Admins:
-1. Open the **Requests** dropdown (🔔)  
-2. View pending requests (Movies/Series)  
-3. Click to see details  
-4. **Approve** or **Deny** with one click  
-5. Approved items move to “Approved” section  
-
----
-
-### 📺 TV Client Behavior
-
-When **Force TV Client Local Search** is enabled:
-- Android TV, Fire TV, and other TV clients automatically use **local search**
-- The `"local:"` prefix is added server-side  
-- No user interaction required — fully transparent  
+- **SearchActionFilter:** Handles routing between local and global sources  
+- **StreamInterceptor:** Manages stream probing and caching  
+- **RequestManager:** Tracks user/admin request workflows  
+- **UI Injector:** Replaces Jellyfin’s version/audio/subtitle selection system with the new visual interface
 
 ---
 
 ## 🧩 Troubleshooting
 
-| Issue | Possible Fix |
-|--------|---------------|
-| 🔎 Search toggle not appearing | Clear browser cache, check console errors, verify plugin is loaded |
-| 📺 TV client not using local search | Enable “Force TV Client Local Search”, check logs for “✓ Detected TV client” |
-| 🗂 Requests not saving | Check file permissions, validate TMDB API key, inspect server logs |
+| Issue | Fix |
+|-------|-----|
+| UI not loading correctly | Clear browser cache and restart Jellyfin |
+| Requests not saving | Check file permissions under Jellyfin data directory |
+| Global search toggle missing | Ensure Gelato is installed and enabled |
+| Missing subtitles/audio | Verify probing is enabled in plugin settings |
 
 ---
 
-## 📧 Support & Community
+## 💬 Community & Support
 
-- 🐞 **Issues:** [Report a bug](https://github.com/j4ckgrey/Baklava/issues)  
-- 💬 **Discussions:** [Join the conversation](https://github.com/j4ckgrey/Baklava/discussions)  
+- 🐞 **Bugs & Issues:** [GitHub Issues](https://github.com/j4ckgrey/Baklava/issues)  
+- 💡 **Discussions:** [GitHub Discussions](https://github.com/j4ckgrey/Baklava/discussions)  
+- 💬 Join our Discord for live support and feature previews  
 
 ---
 
@@ -165,3 +165,6 @@ When **Force TV Client Local Search** is enabled:
 <img src="https://img.shields.io/badge/Plugin-Baklava-orange?style=for-the-badge&logo=github" alt="Baklava Badge"/>
 </p>
 
+<p align="center">
+<sub>Baklava — Smart Media Layer for Jellyfin. Built with ❤️ by j4ckgrey.</sub>
+</p>
