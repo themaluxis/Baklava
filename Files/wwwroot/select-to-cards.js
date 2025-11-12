@@ -329,25 +329,12 @@
 				e.preventDefault();
 				if (selectElement.value === card.dataset.value) return;
 				selectElement.value = card.dataset.value;
-				// trigger native change handlers
+				// trigger native change handlers (which will handle track loading via the change listener)
 				const evt = new Event('change', { bubbles: true });
 				selectElement.dispatchEvent(evt);
 				updateActiveCard(rail, card.dataset.value);
 				// scroll card into view within the rail (not the whole page)
 				card.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-			// Update filename display for version select
-			if (type === 'version') {
-				const form = selectElement.closest('form.trackSelections');
-				const filenameDiv = form?.querySelector('.stc-filename');
-				const selectedOption = Array.from(selectElement.options).find(opt => opt.value === card.dataset.value);
-				if (filenameDiv && selectedOption) {
-					// Use data-filename attribute which contains the part after 📁
-					const filename = selectedOption.getAttribute('data-filename');
-					filenameDiv.textContent = filename || (selectedOption.getAttribute('data-original') || selectedOption.textContent);
-				}
-					// load audio/subtitle tracks
-					loadTracksForVersion(selectElement, card.dataset.value);
-				}
 			});
 
 			rail.appendChild(card);
