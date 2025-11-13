@@ -38,10 +38,11 @@ namespace Baklava.Api
                     enableSearchFilter = cfg.EnableSearchFilter,
                     forceTVClientLocalSearch = cfg.ForceTVClientLocalSearch,
                     disableNonAdminRequests = cfg.DisableNonAdminRequests,
+                    showReviewsCarousel = cfg.ShowReviewsCarousel,
+                    enableDownloads = cfg.EnableDownloads,
                     versionUi = cfg.VersionUi,
                     audioUi = cfg.AudioUi,
-                    subtitleUi = cfg.SubtitleUi,
-                    showReviewsCarousel = cfg.ShowReviewsCarousel
+                    subtitleUi = cfg.SubtitleUi
                 });
             }
 
@@ -49,6 +50,7 @@ namespace Baklava.Api
                 defaultTmdbId = cfg.DefaultTmdbId,
                 disableNonAdminRequests = cfg.DisableNonAdminRequests,
                 showReviewsCarousel = cfg.ShowReviewsCarousel,
+                enableDownloads = cfg.EnableDownloads,
                 versionUi = cfg.VersionUi,
                 audioUi = cfg.AudioUi,
                 subtitleUi = cfg.SubtitleUi
@@ -116,10 +118,15 @@ namespace Baklava.Api
             {
                 cfg.ShowReviewsCarousel = dto.showReviewsCarousel.Value;
             }
+            // Enable/disable downloads
+            if (dto.enableDownloads.HasValue)
+            {
+                cfg.EnableDownloads = dto.enableDownloads.Value;
+            }
             
             Plugin.Instance.SaveConfiguration();
-            _logger.LogInformation("[ConfigController] Configuration saved - SearchFilter: {SearchFilter}, ForceTVLocal: {ForceTVLocal}, DisableNonAdminRequests: {DisableNonAdminRequests}, VersionUi: {VersionUi}, AudioUi: {AudioUi}, SubtitleUi: {SubtitleUi}, ShowReviews: {ShowReviews}", 
-                cfg.EnableSearchFilter, cfg.ForceTVClientLocalSearch, cfg.DisableNonAdminRequests, cfg.VersionUi, cfg.AudioUi, cfg.SubtitleUi, cfg.ShowReviewsCarousel);
+            _logger.LogInformation("[ConfigController] Configuration saved - SearchFilter: {SearchFilter}, ForceTVLocal: {ForceTVLocal}, DisableNonAdminRequests: {DisableNonAdminRequests}, VersionUi: {VersionUi}, AudioUi: {AudioUi}, SubtitleUi: {SubtitleUi}, ShowReviews: {ShowReviews}, EnableDownloads: {EnableDownloads}", 
+                cfg.EnableSearchFilter, cfg.ForceTVClientLocalSearch, cfg.DisableNonAdminRequests, cfg.VersionUi, cfg.AudioUi, cfg.SubtitleUi, cfg.ShowReviewsCarousel, cfg.EnableDownloads);
             return Ok();
         }
     }
@@ -132,6 +139,7 @@ namespace Baklava.Api
         public bool? forceTVClientLocalSearch { get; set; }
         public bool? disableNonAdminRequests { get; set; }
         public bool? showReviewsCarousel { get; set; }
+        public bool? enableDownloads { get; set; }
         public string versionUi { get; set; }
         public string audioUi { get; set; }
         public string subtitleUi { get; set; }

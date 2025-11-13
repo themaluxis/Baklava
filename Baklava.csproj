@@ -21,6 +21,11 @@
     <!-- Version wildcard used; adjust as needed for compatibility with your Jellyfin server -->
     <PackageReference Include="Jellyfin.Model" Version="10.*" />
     <PackageReference Include="Jellyfin.Controller" Version="10.*" />
+    <!-- Reference Newtonsoft.Json for compile but use server's runtime version -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
   <!-- After publish, remove server/core assemblies that should not be shipped with a Jellyfin plugin.

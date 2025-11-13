@@ -149,56 +149,86 @@ namespace Baklava
 
                 if (ftType != null)
                 {
-                    // Build a JObject payload (we'll reference Newtonsoft here dynamically)
-                    var newtonsoft = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "Newtonsoft.Json" || a.GetName().Name == "Newtonsoft.Json.Linq");
+                    PluginLogger.Log("Found FileTransformation.PluginInterface, attempting direct registration...");
+                    
+                    // Find Newtonsoft.Json assembly
+                    var newtonsoft = AppDomain.CurrentDomain.GetAssemblies()
+                        .FirstOrDefault(a => a.GetName().Name == "Newtonsoft.Json");
+                    
                     if (newtonsoft != null)
                     {
-                        var jObjectType = AppDomain.CurrentDomain.GetAssemblies()
-                            .Select(a => a.GetType("Newtonsoft.Json.Linq.JObject", false))
-                            .FirstOrDefault(t => t != null);
-
+                        PluginLogger.Log("Found Newtonsoft.Json assembly");
+                        
+                        var jObjectType = newtonsoft.GetType("Newtonsoft.Json.Linq.JObject");
                         if (jObjectType != null)
                         {
-                            var jobject = Activator.CreateInstance(jObjectType);
-                            var addMethod = jObjectType.GetMethod("Add", new[] { typeof(object), typeof(object) });
-                            if (addMethod == null)
+                            PluginLogger.Log("Found JObject type, preparing payload...");
+                            
+                            var assemblyFullName = Assembly.GetExecutingAssembly().FullName;
+                            var classFullName = typeof(FileTransformations).FullName;
+                            var methodName = nameof(FileTransformations.Transform);
+                            
+                            PluginLogger.Log($"REGISTRATION DETAILS: Assembly='{assemblyFullName}', Class='{classFullName}', Method='{methodName}'");
+                            
+                            var payloadDictDirect = new Dictionary<string, object>
                             {
-                                // JObject.Add signature varies; use FromObject on a dictionary instead
-                                var fromObject = jObjectType.GetMethod("FromObject", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(object) }, null);
-                                if (fromObject != null)
-                                {
-                                    var assemblyFullName = Assembly.GetExecutingAssembly().FullName;
-                                    var classFullName = typeof(FileTransformations).FullName;
-                                    var methodName = nameof(FileTransformations.Transform);
-                                    
-                                    PluginLogger.Log($"REGISTRATION DETAILS: Assembly='{assemblyFullName}', Class='{classFullName}', Method='{methodName}'");
-                                    
-                                    var payloadDictDirect = new Dictionary<string, object>
-                                    {
-                                        ["id"] = Guid.NewGuid(),
-                                        ["fileNamePattern"] = "index.html",
-                                        ["callbackAssembly"] = assemblyFullName,
-                                        ["callbackClass"] = classFullName,
-                                        ["callbackMethod"] = methodName
-                                    };
+                                ["id"] = Guid.NewGuid(),
+                                ["fileNamePattern"] = "index.html",
+                                ["callbackAssembly"] = assemblyFullName,
+                                ["callbackClass"] = classFullName,
+                                ["callbackMethod"] = methodName
+                            };
 
-                                    var payloadObjDirect = fromObject.Invoke(null, new object[] { payloadDictDirect });
-                                    var registerMi = ftType.GetMethod("RegisterTransformation", BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance);
-                                    if (registerMi != null)
+                            // Try to convert to JObject using FromObject
+                            var fromObjectMethods = jObjectType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                                .Where(m => m.Name == "FromObject")
+                                .ToArray();
+                            
+                            PluginLogger.Log($"Found {fromObjectMethods.Length} FromObject methods");
+                            
+                            var fromObject = fromObjectMethods.FirstOrDefault(m => m.GetParameters().Length == 1);
+                            if (fromObject != null)
+                            {
+                                PluginLogger.Log("Converting payload to JObject...");
+                                var payloadObjDirect = fromObject.Invoke(null, new object[] { payloadDictDirect });
+                                PluginLogger.Log($"Payload converted, type: {payloadObjDirect?.GetType().FullName ?? "null"}");
+                                
+                                var registerMi = ftType.GetMethod("RegisterTransformation", BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance);
+                                if (registerMi != null)
+                                {
+                                    PluginLogger.Log($"Found RegisterTransformation method, IsStatic: {registerMi.IsStatic}");
+                                    
+                                    object targetDirect = null;
+                                    if (!registerMi.IsStatic)
                                     {
-                                        object targetDirect = null;
-                                        if (!registerMi.IsStatic)
-                                        {
-                                            targetDirect = Activator.CreateInstance(ftType);
-                                        }
-                                        registerMi.Invoke(targetDirect, new object[] { payloadObjDirect });
-                                        PluginLogger.Log("Invoked transformation registration successfully (direct API).");
-                                        try { InspectRegistrations(ftType, "index.html"); } catch { }
-                                        return true;
+                                        targetDirect = Activator.CreateInstance(ftType);
+                                        PluginLogger.Log("Created instance of PluginInterface");
                                     }
+                                    
+                                    PluginLogger.Log("Invoking RegisterTransformation...");
+                                    registerMi.Invoke(targetDirect, new object[] { payloadObjDirect });
+                                    PluginLogger.Log("Invoked transformation registration successfully (direct API).");
+                                    try { InspectRegistrations(ftType, "index.html"); } catch { }
+                                    return true;
+                                }
+                                else
+                                {
+                                    PluginLogger.Log("ERROR: RegisterTransformation method not found");
                                 }
                             }
+                            else
+                            {
+                                PluginLogger.Log("ERROR: Could not find suitable FromObject method");
+                            }
                         }
+                        else
+                        {
+                            PluginLogger.Log("ERROR: JObject type not found in Newtonsoft.Json");
+                        }
+                    }
+                    else
+                    {
+                        PluginLogger.Log("ERROR: Newtonsoft.Json assembly not found");
                     }
                 }
             }
@@ -265,23 +295,64 @@ namespace Baklava
             object payload = payloadDict;
             try
             {
-                var jObjType = AppDomain.CurrentDomain.GetAssemblies()
-                    .Select(a => a.GetType("Newtonsoft.Json.Linq.JObject", false))
-                    .FirstOrDefault(t => t != null);
-
-                if (jObjType != null)
+                // First, try to find Newtonsoft.Json assembly
+                var newtonsoftAsm = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(a => a.GetName().Name == "Newtonsoft.Json");
+                
+                if (newtonsoftAsm != null)
                 {
-                    var fromObject = jObjType.GetMethod("FromObject", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(object) }, null);
-                    if (fromObject != null)
+                    PluginLogger.Log("Found Newtonsoft.Json assembly, attempting JObject conversion...");
+                    
+                    var jObjType = newtonsoftAsm.GetType("Newtonsoft.Json.Linq.JObject");
+                    if (jObjType != null)
                     {
-                        payload = fromObject.Invoke(null, new object[] { payloadDict });
-                        PluginLogger.Log("Converted registration payload to JObject via FromObject.");
+                        PluginLogger.Log("Found JObject type, looking for FromObject method...");
+                        
+                        // Try different overloads of FromObject
+                        var fromObject = jObjType.GetMethod("FromObject", 
+                            BindingFlags.Public | BindingFlags.Static, 
+                            null, 
+                            new[] { typeof(object) }, 
+                            null);
+                        
+                        if (fromObject == null)
+                        {
+                            // Try with JsonSerializerSettings parameter
+                            var methods = jObjType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                                .Where(m => m.Name == "FromObject")
+                                .ToArray();
+                            
+                            PluginLogger.Log($"Found {methods.Length} FromObject methods");
+                            
+                            fromObject = methods.FirstOrDefault(m => m.GetParameters().Length == 1);
+                        }
+                        
+                        if (fromObject != null)
+                        {
+                            PluginLogger.Log("Invoking JObject.FromObject...");
+                            payload = fromObject.Invoke(null, new object[] { payloadDict });
+                            PluginLogger.Log("Successfully converted registration payload to JObject via FromObject.");
+                        }
+                        else
+                        {
+                            PluginLogger.Log("ERROR: Could not find suitable FromObject method on JObject type");
+                        }
                     }
+                    else
+                    {
+                        PluginLogger.Log("ERROR: Could not find JObject type in Newtonsoft.Json assembly");
+                    }
+                }
+                else
+                {
+                    PluginLogger.Log("WARNING: Newtonsoft.Json assembly not found - payload will be Dictionary");
                 }
             }
             catch (Exception ex)
             {
                 PluginLogger.Log("Failed to convert payload to JObject: " + ex);
+                PluginLogger.Log("Exception details: " + ex.Message);
+                PluginLogger.Log("Stack trace: " + ex.StackTrace);
                 payload = payloadDict; // fallback
             }
 

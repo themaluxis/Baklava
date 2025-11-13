@@ -295,8 +295,13 @@
     box-sizing: border-box;  /* safe for padding/width calculations */
 }
 
+/* Allow horizontal scrolling on home page carousels (mobile touch) */
 .emby-scroller {
-    overflow-x: hidden !important;
+    overflow-x: auto !important;
+    scrollbar-width: none;
+}
+.emby-scroller::-webkit-scrollbar {
+    display: none;
 }
 
 /* ============================================
@@ -372,18 +377,13 @@
     display: none !important;
 }
 
-/* Targets the label inside it */
-.selectContainer.selectSourceContainer.trackSelectionFieldContainer.flex-shrink-zero .selectLabel {
+/* Hide labels when the select element itself is hidden (carousel mode) */
+.selectContainer.selectSourceContainer:has(select[style*="display: none"]) .selectLabel,
+.selectContainer.selectAudioContainer:has(select[style*="display: none"]) .selectLabel,
+.selectContainer.selectSubtitlesContainer:has(select[style*="display: none"]) .selectLabel {
     display: none !important;
 }
 
-.selectContainer.selectAudioContainer.trackSelectionFieldContainer.flex-shrink-zero .selectLabel {
-    display: none !important;
-}
-
-.selectContainer.selectSubtitlesContainer.trackSelectionFieldContainer.flex-shrink-zero .selectLabel {
-    display: none !important;
-}
 /* Hide only audio */
 /* .selectContainer.selectAudioContainer {
     display: none !important;

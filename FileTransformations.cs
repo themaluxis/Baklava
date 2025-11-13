@@ -12,10 +12,34 @@ namespace Baklava
     public static class FileTransformations
     {
         private const string InjectionMarker = "<!-- Baklava Injected -->";
-    // Folder name used under the Jellyfin plugins directory.
-    // Use the assembly name at runtime so fallback static references
-    // match the actual folder the plugin is installed to (e.g. "Baklava").
-    private static readonly string PluginFolderName = Assembly.GetExecutingAssembly().GetName().Name ?? "Baklava";
+        
+        // Get the actual plugin folder name from the assembly location
+        private static string GetPluginFolderName()
+        {
+            try
+            {
+                // Get the directory where the DLL is loaded from
+                var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+                if (!string.IsNullOrEmpty(assemblyLocation))
+                {
+                    // Assembly is at: /var/lib/jellyfin/plugins/Baklava_0.2.3.0/Baklava.dll
+                    // We want: Baklava_0.2.3.0
+                    var pluginDir = System.IO.Path.GetDirectoryName(assemblyLocation);
+                    if (!string.IsNullOrEmpty(pluginDir))
+                    {
+                        var folderName = System.IO.Path.GetFileName(pluginDir);
+                        if (!string.IsNullOrEmpty(folderName))
+                        {
+                            return folderName;
+                        }
+                    }
+                }
+            }
+            catch { }
+            
+            // Fallback to assembly name
+            return Assembly.GetExecutingAssembly().GetName().Name ?? "Baklava";
+        }
 
         // Get JavaScript files to inject
         private static string[] GetJsFiles()
@@ -28,6 +52,8 @@ namespace Baklava
                 "select-to-cards.js",     // Playback streams UI (carousel/dropdown controlled by CSS)
                 "reviews-carousel.js",    // TMDB reviews carousel
                 "requests.js",            // Consolidated requests manager, header button, menu
+                "downloads-window.js",    // Downloads window with header button
+                "details-download.js",    // Download button on detail pages
                 "search-toggle.js"        // Search toggle globe icon
             };
         }        // Transform method signature: accepts PatchRequestPayload, returns string
@@ -106,7 +132,7 @@ namespace Baklava
                 else
                 {
                     // Fallback: reference the static CSS file
-                    styleTags.Add($"<link rel=\"stylesheet\" href=\"/plugins/{PluginFolderName}/Files/wwwroot/custom.css\">");
+                    styleTags.Add($"<link rel=\"stylesheet\" href=\"/plugins/{GetPluginFolderName()}/Files/wwwroot/custom.css\">");
                 }
                 
                 // Add dynamic CSS based on config
@@ -167,14 +193,13 @@ namespace Baklava
                 try { PluginLogger.Log($"InjectScript: Failed to load CSS: {ex.Message}"); } catch { }
             }
 
-            // Inject each JavaScript file in order
+            // Inject each JavaScript file inline from embedded resources
+            // This ensures scripts load correctly since Jellyfin doesn't serve plugin static files
             var jsFiles = GetJsFiles();
             foreach (var jsFile in jsFiles)
             {
-                bool embedded = false;
                 try
                 {
-                    // Try to load as embedded resource first
                     var resourcePattern = $"Files.wwwroot.{jsFile}";
                     var match = Array.Find(resourceNames, n => n.EndsWith(resourcePattern, StringComparison.OrdinalIgnoreCase));
                     
@@ -186,19 +211,12 @@ namespace Baklava
                             using var reader = new System.IO.StreamReader(stream);
                             var jsContent = reader.ReadToEnd();
                             scriptTags.Add($"<script type=\"text/javascript\">\n/* {jsFile} */\n{jsContent}\n</script>");
-                            embedded = true;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
                     try { PluginLogger.Log($"InjectScript: Error loading {jsFile}: {ex.Message}"); } catch { }
-                }
-
-                // Fallback to static file reference ONLY if embedded failed
-                if (!embedded)
-                {
-                    scriptTags.Add($"<script src=\"/plugins/{PluginFolderName}/Files/wwwroot/{jsFile}\"></script>");
                 }
             }
 

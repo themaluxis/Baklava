@@ -197,30 +197,15 @@
 		const cardHeight = type === 'version' ? '100px' : '60px';
 		rail.style.minHeight = cardHeight;
 		
-		// Hide scrollbar by default, show on hover
-		rail.style.scrollbarWidth = 'thin';
+		// Hide scrollbar completely
+		rail.style.scrollbarWidth = 'none';
 		rail.style.scrollbarColor = 'transparent transparent';
-		rail.addEventListener('mouseenter', () => {
-			rail.style.scrollbarColor = 'rgba(255,255,255,0.3) transparent';
-		});
-		rail.addEventListener('mouseleave', () => {
-			rail.style.scrollbarColor = 'transparent transparent';
-		});
-		// Webkit browsers
+		
+		// Webkit browsers - hide scrollbar completely
 		const styleEl = document.createElement('style');
 		styleEl.textContent = `
 			.stc-rail::-webkit-scrollbar {
-				height: 8px;
-			}
-			.stc-rail::-webkit-scrollbar-track {
-				background: transparent;
-			}
-			.stc-rail::-webkit-scrollbar-thumb {
-				background: transparent;
-				border-radius: 4px;
-			}
-			.stc-rail:hover::-webkit-scrollbar-thumb {
-				background: rgba(255,255,255,0.3);
+				display: none;
 			}
 		`;
 		if (!document.querySelector('#stc-scrollbar-style')) {

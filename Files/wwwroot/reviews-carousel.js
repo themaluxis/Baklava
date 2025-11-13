@@ -161,7 +161,8 @@
 
         // Track container
         const trackContainer = document.createElement('div');
-        trackContainer.style.cssText = 'position: relative; overflow: hidden; width: 100%;';
+        trackContainer.style.cssText = 'position: relative; overflow-x: auto; overflow-y: hidden; width: 100%; scrollbar-width: none; -webkit-overflow-scrolling: touch;';
+        trackContainer.setAttribute('style', trackContainer.getAttribute('style') + ' -ms-overflow-style: none;');
 
         const track = document.createElement('div');
         track.className = 'baklava-review-track';
@@ -412,7 +413,7 @@
         if (urlId) {
             currentItemId = urlId;
             console.log('[ReviewsCarousel] Captured itemId from URL params:', currentItemId);
-            return true;
+            return urlId;
         }
 
         // Try URL hash
@@ -420,11 +421,11 @@
         if (urlMatch) {
             currentItemId = urlMatch[1].replace(/-/g, '');
             console.log('[ReviewsCarousel] Captured itemId from URL match:', currentItemId);
-            return true;
+            return currentItemId;
         }
 
         console.warn('[ReviewsCarousel] No itemId found');
-        return false;
+        return null;
     }
 
     async function initReviewsCarousel() {
