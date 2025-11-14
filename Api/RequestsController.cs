@@ -418,41 +418,46 @@ namespace Baklava.Api
                 var title = $"{request.Title ?? "Unknown"} ({request.Year ?? "N/A"})";
                 var color = request.ItemType == "series" ? 3447003 : 15844367; // Blue for series, gold for movies
 
-                var payload = new
+                // Build embed as Dictionary to allow conditional fields
+                var embed = new Dictionary<string, object>
                 {
-                    content = "📢 **New Media Request**",
-                    embeds = new[]
+                    ["title"] = title,
+                    ["description"] = $"Requested by: **{request.Username ?? "Unknown"}**",
+                    ["color"] = color,
+                    ["fields"] = new[]
                     {
-                        new
+                        new Dictionary<string, object>
                         {
-                            title = title,
-                            description = $"Requested by: **{request.Username ?? "Unknown"}**",
-                            color = color,
-                            fields = new[]
-                            {
-                                new
-                                {
-                                    name = "Type",
-                                    value = mediaType,
-                                    inline = true
-                                },
-                                new
-                                {
-                                    name = "Status",
-                                    value = request.Status?.ToUpper() ?? "PENDING",
-                                    inline = true
-                                },
-                                new
-                                {
-                                    name = "TMDB ID",
-                                    value = request.TmdbId ?? "N/A",
-                                    inline = true
-                                }
-                            },
-                            thumbnail = string.IsNullOrEmpty(request.Img) ? null : new { url = request.Img },
-                            timestamp = DateTimeOffset.UtcNow.ToString("o")
+                            ["name"] = "Type",
+                            ["value"] = mediaType,
+                            ["inline"] = true
+                        },
+                        new Dictionary<string, object>
+                        {
+                            ["name"] = "Status",
+                            ["value"] = request.Status?.ToUpper() ?? "PENDING",
+                            ["inline"] = true
+                        },
+                        new Dictionary<string, object>
+                        {
+                            ["name"] = "TMDB ID",
+                            ["value"] = request.TmdbId ?? "N/A",
+                            ["inline"] = true
                         }
-                    }
+                    },
+                    ["timestamp"] = DateTimeOffset.UtcNow.ToString("o")
+                };
+
+                // Only add thumbnail if image URL is present
+                if (!string.IsNullOrEmpty(request.Img))
+                {
+                    embed["thumbnail"] = new Dictionary<string, string> { ["url"] = request.Img };
+                }
+
+                var payload = new Dictionary<string, object>
+                {
+                    ["content"] = "📢 **New Media Request**",
+                    ["embeds"] = new[] { embed }
                 };
 
                 using var http = new HttpClient();
