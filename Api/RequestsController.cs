@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json.Serialization;
 using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -145,6 +148,10 @@ namespace Baklava.Api
             Plugin.Instance.SaveConfiguration();
 
             _logger.LogInformation($"[RequestsController] Created request: {request.Id}");
+
+            // Send Discord notification
+            _ = SendDiscordNotification(request);
+
             return Ok(request);
         }
 
@@ -389,6 +396,26 @@ namespace Baklava.Api
             }
             
             return Ok(new { removed, remaining = validRequests.Count });
+        }
+
+        private async Task SendDiscordNotification(MediaRequest request)
+        {
+            var config = Plugin.Instance?.Configuration;
+            if (config == null || string.IsNullOrEmpty(config.DiscordWebhookUrl))
+            {
+                return;
+            }
+
+            using (var client = new HttpClient())
+            {
+                var payload = new
+                {
+                    content = $"New media request from {request.Username}: {request.Title}"
+                };
+                var jsonPayload = JsonSerializer.Serialize(payload);
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                await client.PostAsync(config.DiscordWebhookUrl, content);
+            }
         }
     }
 

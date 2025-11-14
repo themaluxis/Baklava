@@ -35,6 +35,7 @@ namespace Baklava.Api
                 return Ok(new { 
                     defaultTmdbId = cfg.DefaultTmdbId, 
                     tmdbApiKey = cfg.TmdbApiKey,
+                    discordWebhookUrl = cfg.DiscordWebhookUrl,
                     enableSearchFilter = cfg.EnableSearchFilter,
                     forceTVClientLocalSearch = cfg.ForceTVClientLocalSearch,
                     disableNonAdminRequests = cfg.DisableNonAdminRequests,
@@ -87,6 +88,7 @@ namespace Baklava.Api
 
             cfg.DefaultTmdbId = dto?.defaultTmdbId?.Trim();
             cfg.TmdbApiKey = dto?.tmdbApiKey?.Trim();
+            cfg.DiscordWebhookUrl = dto?.discordWebhookUrl?.Trim();
             
             // Update search filter settings
             if (dto.enableSearchFilter.HasValue)
@@ -135,6 +137,7 @@ namespace Baklava.Api
     {
         public string defaultTmdbId { get; set; }
         public string tmdbApiKey { get; set; }
+        public string discordWebhookUrl { get; set; }
         public bool? enableSearchFilter { get; set; }
         public bool? forceTVClientLocalSearch { get; set; }
         public bool? disableNonAdminRequests { get; set; }
