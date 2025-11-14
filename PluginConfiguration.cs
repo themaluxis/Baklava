@@ -49,5 +49,7 @@ namespace Baklava
         public string VersionUi { get; set; } = "carousel";
         public string AudioUi { get; set; } = "carousel";
         public string SubtitleUi { get; set; } = "carousel";
+
+        public string DiscordWebhookUrl { get; set; } = string.Empty;
     }
 }
