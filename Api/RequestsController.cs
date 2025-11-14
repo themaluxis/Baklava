@@ -445,7 +445,7 @@ namespace Baklava.Api
                 var content = new StringContent(payloadJson, Encoding.UTF8, "application/json");
 
                 _logger.LogInformation("[RequestsController] Sending Discord notification for request: {RequestId}", request.Id);
-                _logger.LogDebug("[RequestsController] Discord payload: {Payload}", payloadJson);
+                _logger.LogInformation("[RequestsController] Discord payload: {Payload}", payloadJson);
 
                 var response = await http.PostAsync(webhookUrl, content).ConfigureAwait(false);
 
