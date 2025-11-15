@@ -374,113 +374,75 @@
         });
 
     approveBtn.addEventListener('click', async () => {
-            // Make UI response immediate and fire a single Gelato API call (fire-and-forget),
-            // then disable the button and close the modal.
             const requestId = overlay.dataset.requestId;
             const tmdbId = overlay.dataset.tmdbId;
             const imdbId = overlay.dataset.imdbId;
             const itemType = overlay.dataset.itemType || 'movie';
+            const itemId = overlay.dataset.itemId;
+
+            console.log('[DetailsModal] Approve clicked - requestId:', requestId, 'itemId:', itemId, 'imdbId:', imdbId, 'tmdbId:', tmdbId);
 
             if (!requestId) {
-                // Nothing to do: clear and close quickly
+                console.warn('[DetailsModal] No requestId found, closing modal');
                 approveBtn.textContent = 'No-op';
                 approveBtn.style.background = '#888';
                 setTimeout(() => hideModal(), 400);
                 return;
             }
 
-            // Fire server-side proxy to call Gelato (non-blocking), then update UI.
+            // Immediate UI feedback
+            approveBtn.disabled = true;
+            approveBtn.textContent = 'Approved';
+            approveBtn.style.background = '#888';
+
+            // Fire server-side proxy to call Gelato (fire-and-forget)
             if (imdbId) {
                 try {
                     const isSeries = itemType && itemType.toLowerCase().includes('series');
-                    // MetadataController exposes a server-side proxy at /api/gelato/movie/{id} and /api/gelato/tv/{id}
                     const proxyPath = isSeries ? `api/gelato/tv/${encodeURIComponent(imdbId)}` : `api/gelato/movie/${encodeURIComponent(imdbId)}`;
                     const proxyUrl = window.ApiClient.getUrl(proxyPath);
 
-                    // Fire-and-forget: POST to the server proxy which will call Gelato using configured auth.
-                    try {
-                        window.ApiClient.ajax({ type: 'POST', url: proxyUrl }).catch(() => {});
-                    } catch (e) {
-                        console.warn('[DetailsModal] gelato proxy call failed', e);
-                    }
+                    console.log('[DetailsModal] Calling Gelato proxy:', proxyUrl);
+                    window.ApiClient.ajax({ type: 'POST', url: proxyUrl }).catch((e) => {
+                        console.warn('[DetailsModal] Gelato proxy call failed:', e);
+                    });
                 } catch (e) {
                     console.error('[DetailsModal] Error preparing gelato proxy call:', e);
                 }
             }
 
-            // Immediate UI feedback regardless of network outcome
-            approveBtn.disabled = true;
-            approveBtn.textContent = 'Approved';
-            approveBtn.style.background = '#888';
-
-            // Move the card live into the Approved carousel(s) so admins see it immediately.
-            try {
-                (function moveCardToApproved(id) {
-                    if (!id) return;
-
-                    // Find the existing card in the DOM (could be in movies/series list)
-                    const selector = `.request-card[data-request-id="${id}"]`;
-                    const orig = document.querySelector(selector);
-
-                    // Append to dropdown approved container
-                    const approvedDropdown = document.querySelector('.dropdown-approved-container');
-                    if (approvedDropdown) {
-                        try {
-                            if (orig && orig.parentElement) {
-                                // Clone original for dropdown view (so other view can remain intact)
-                                const clone = orig.cloneNode(true);
-                                // Ensure badge shows Approved
-                                const maybeBadge = clone.querySelector('div');
-                                // Append clone (event handlers will be refreshed when full reload occurs)
-                                approvedDropdown.appendChild(clone);
-                            }
-                        } catch (e) { /* ignore DOM errors */ }
-                    }
-
-                    // Append to requests page approved panel
-                    const approvedPage = document.querySelector('.requests-approved-panel .itemsContainer');
-                    if (approvedPage) {
-                        try {
-                            if (orig && orig.parentElement) {
-                                const clone2 = orig.cloneNode(true);
-                                approvedPage.appendChild(clone2);
-                            }
-                        } catch (e) { /* ignore */ }
-                    }
-
-                    // Remove original from its current parent so it visually moves
-                    try { if (orig && orig.parentElement) orig.parentElement.removeChild(orig); } catch (e) { }
-                })(requestId);
-            } catch (e) {
-                console.warn('[DetailsModal] moveCardToApproved failed', e);
-            }
-
-            // Also close the dropdown and requests page so admin is returned to main UI
-            try { hideModal(); } catch (e) { /* ignore */ }
-            try { if (window.RequestsHeaderButton) { const dd = document.querySelector('.requests-dropdown'); if (dd) dd.style.display = 'none'; const back = document.querySelector('.requests-backdrop'); if (back) back.style.display = 'none'; } } catch (e) { }
-            try { const rp = document.getElementById('requestsPage'); if (rp) rp.style.display = 'none'; } catch (e) { }
-
-            // Fire-and-forget server update (record ApprovedBy and trigger Gelato)
+            // Update request status on server (fire-and-forget)
             if (requestId && window.RequestManager && typeof window.RequestManager.updateStatus === 'function') {
                 try {
                     let approver = null;
-                    try { const current = await window.ApiClient.getCurrentUser(); approver = current?.Name || null; } catch (err) {
-                        try { const user = await window.ApiClient.getUser(window.ApiClient.getCurrentUserId()); approver = user?.Name || null; } catch { approver = null; }
+                    try {
+                        const current = await window.ApiClient.getCurrentUser();
+                        approver = current?.Name || null;
+                    } catch (err) {
+                        try {
+                            const user = await window.ApiClient.getUser(window.ApiClient.getCurrentUserId());
+                            approver = user?.Name || null;
+                        } catch {
+                            approver = null;
+                        }
                     }
+                    console.log('[DetailsModal] Updating request status to approved by:', approver);
                     window.RequestManager.updateStatus(requestId, 'approved', approver).catch(() => {});
-                } catch (e) { console.warn('[DetailsModal] Failed to update request status:', e); }
-            }
-            // Close the modal and navigate to the details page for this item so admins
-            // can immediately inspect the imported title. Use the itemId stored on
-            // the modal (prefers Jellyfin item id when available).
-            setTimeout(() => {
-                try { hideModal(); } catch (e) { /* ignore */ }
-                const targetId = overlay?.dataset?.itemId || overlay?.dataset?.jellyfinId || overlay?.dataset?.tmdbId || overlay?.dataset?.imdbId;
-                if (targetId) {
-                    // Navigate to Jellyfin details route
-                    window.location.hash = '#/details?id=' + encodeURIComponent(targetId);
+                } catch (e) {
+                    console.warn('[DetailsModal] Failed to update request status:', e);
                 }
-            }, 250);
+            }
+
+            // Navigate to details page exactly like the Import button does
+            const id = itemId || tmdbId || imdbId;
+            if (id) {
+                console.log('[DetailsModal] Navigating to details page with id:', id);
+                hideModal();
+                window.location.hash = '#/details?id=' + encodeURIComponent(id);
+            } else {
+                console.error('[DetailsModal] No ID available for navigation');
+                hideModal();
+            }
         });
 
         rejectBtn.addEventListener('click', async () => {
