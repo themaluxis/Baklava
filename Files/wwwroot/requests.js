@@ -148,6 +148,21 @@
     // ============================================
 
     async function createRequestCard(request, adminView) {
+        // Check if item is in library
+        let inLibrary = false;
+        if (window.LibraryStatus && window.LibraryStatus.check) {
+            try {
+                inLibrary = await window.LibraryStatus.check(
+                    request.imdbId,
+                    request.tmdbId,
+                    request.itemType || 'movie',
+                    request.jellyfinId
+                );
+            } catch (e) {
+                console.warn('[RequestsJS] Error checking library status:', e);
+            }
+        }
+
         const card = document.createElement('div');
         card.className = 'request-card';
         // Support different casing coming from server/client payloads and avoid undefined dataset
@@ -190,8 +205,29 @@
         imgDiv.appendChild(overlay);
         card.appendChild(imgDiv);
 
-        // Status badge (top-right)
-        if (request.status === 'pending') {
+        // Status badge (top-right) - prioritize "In Library" if item is actually in library
+        if (inLibrary) {
+            const statusBadge = document.createElement('div');
+            statusBadge.className = 'request-status-badge';
+            statusBadge.dataset.status = 'in-library';
+            statusBadge.textContent = 'In Library';
+            statusBadge.style.cssText = `
+                position: absolute;
+                top: 6px;
+                right: 6px;
+                background: rgba(33, 150, 243, 0.95);
+                color: #fff;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                z-index: 2;
+            `;
+            card.appendChild(statusBadge);
+        } else if (request.status === 'pending') {
             const statusBadge = document.createElement('div');
             statusBadge.className = 'request-status-badge';
             statusBadge.dataset.status = 'pending';
@@ -324,7 +360,35 @@
 
         // Admin action buttons
         if (adminView) {
-            if (request.status === 'pending') {
+            // If in library, show "Open" button regardless of request status
+            if (inLibrary) {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.style.cssText = `
+                    padding: 8px;
+                    background: rgba(15, 15, 15, 0.9);
+                `;
+
+                const openBtn = document.createElement('button');
+                openBtn.textContent = 'Open';
+                openBtn.className = 'raised button-submit emby-button';
+                openBtn.style.cssText = `
+                    width: 100%;
+                    padding: 6px;
+                    background: rgba(33, 150, 243, 0.9);
+                    font-size: 11px;
+                    font-weight: 600;
+                `;
+                openBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = request.jellyfinId || request.tmdbId || request.imdbId;
+                    if (id) {
+                        window.location.hash = '#/details?id=' + encodeURIComponent(id);
+                    }
+                });
+
+                actionsDiv.appendChild(openBtn);
+                card.appendChild(actionsDiv);
+            } else if (request.status === 'pending') {
                 const actionsDiv = document.createElement('div');
                 actionsDiv.style.cssText = `
                     padding: 8px;
@@ -345,7 +409,7 @@
                 `;
                 approveBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    // Navigate to item details page - let user manually approve from there
+                    // Navigate to item details page
                     const id = request.jellyfinId || request.tmdbId || request.imdbId;
                     if (id) {
                         window.location.hash = '#/details?id=' + encodeURIComponent(id);
