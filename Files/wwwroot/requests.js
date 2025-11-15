@@ -689,28 +689,28 @@
     }
 
     // ============================================
-    // HEADER BUTTON
+    // USER MENU INTEGRATION
     // ============================================
-    
+
     async function updateNotificationBadge() {
         const badge = document.querySelector('.requests-notification-badge');
         if (!badge) return;
-        
+
         // Check if ApiClient is ready
         if (!window.ApiClient) {
             console.warn('[Requests.updateNotificationBadge] ApiClient not ready yet');
             return;
         }
-        
+
         try {
             const requests = await fetchAllRequests();
             const username = await getCurrentUsername();
             const adminView = await checkAdmin();
-            
+
             console.log('[Requests.updateNotificationBadge] Fetched', requests.length, 'total requests');
-            
+
             let pendingCount = 0;
-            
+
             if (adminView) {
                 // For admins: count all pending requests (from any user)
                 pendingCount = requests.filter(r => r.status === 'pending').length;
@@ -718,42 +718,40 @@
                 // For regular users: count only their own pending requests
                 pendingCount = requests.filter(r => r.status === 'pending' && r.username === username).length;
             }
-            
+
             console.log('[Requests.updateNotificationBadge] Pending count:', pendingCount, '(admin:', adminView, ')');
-            
-            // Always show the badge with the count (including 0)
-            badge.textContent = pendingCount > 99 ? '99+' : pendingCount.toString();
-            badge.style.display = 'flex';
+
+            // Show badge only if there are pending requests
+            if (pendingCount > 0) {
+                badge.textContent = pendingCount > 99 ? '99+' : pendingCount.toString();
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
         } catch (err) {
             console.error('[Requests.updateNotificationBadge] Error:', err);
             badge.style.display = 'none';
         }
     }
 
-    function addRequestsButton() {
-        // Skip if button already exists
-        if (document.querySelector('.headerRequestsButton')) {
+    function addBadgeToUserButton() {
+        // Find the user button
+        const userButton = document.querySelector('.headerUserButton');
+        if (!userButton) {
+            setTimeout(addBadgeToUserButton, 500);
             return;
         }
-        
-        // Use legacy header only
-        const headerRight = document.querySelector('.headerRight');
-        if (!headerRight) {
-            console.log('[Requests] No header found, will retry');
-            setTimeout(addRequestsButton, 500);
+
+        // Check if badge already exists
+        if (document.querySelector('.requests-notification-badge')) {
             return;
         }
-        
-        console.log('[Requests] Adding button to legacy header');
-        
-        const btn = document.createElement('button');
-        btn.setAttribute('is', 'paper-icon-button-light');
-        btn.setAttribute('data-role', 'requests-button');
-        btn.className = 'headerButton headerButtonRight headerRequestsButton paper-icon-button-light';
-        btn.title = 'Media Requests';
-        btn.style.position = 'relative'; // Needed for badge positioning
-        btn.innerHTML = '<span class="material-icons list_alt" aria-hidden="true"></span>';
-        
+
+        console.log('[Requests] Adding badge to user button');
+
+        // Make sure user button has relative positioning
+        userButton.style.position = 'relative';
+
         // Add notification badge element
         const badge = document.createElement('span');
         badge.className = 'requests-notification-badge';
@@ -774,28 +772,115 @@
             padding: 1px;
             line-height: 1;
             z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
         `;
-        btn.appendChild(badge);
-        
-        const userButton = headerRight.querySelector('.headerUserButton');
-        if (userButton) {
-            headerRight.insertBefore(btn, userButton);
-        } else {
-            headerRight.appendChild(btn);
-        }
-        
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleDropdown(btn);
-        });
-        
-        console.log('[Requests] Button added successfully');
-        
-        // Update badge immediately and then periodically
-        // Wait a bit for ApiClient to be fully ready
+        userButton.appendChild(badge);
+
+        console.log('[Requests] Badge added successfully');
+
+        // Update badge immediately
         setTimeout(() => {
             updateNotificationBadge();
         }, 1000);
+
+        // Update badge periodically
+        setInterval(() => {
+            updateNotificationBadge();
+        }, 30000); // Every 30 seconds
+    }
+
+    function addMenuItemToUserMenu() {
+        // Wait for user menu to be available
+        const checkForMenu = () => {
+            // Look for the user menu dropdown
+            const userMenus = document.querySelectorAll('.headerUserButtonRound + div[data-role="controlgroup"]');
+
+            if (userMenus.length === 0) {
+                setTimeout(checkForMenu, 500);
+                return;
+            }
+
+            // Check if menu item already exists
+            if (document.querySelector('.baklava-requests-menu-item')) {
+                return;
+            }
+
+            console.log('[Requests] Adding menu item to user menu');
+
+            userMenus.forEach(menu => {
+                // Create menu item
+                const menuItem = document.createElement('button');
+                menuItem.className = 'emby-button baklava-requests-menu-item';
+                menuItem.setAttribute('is', 'emby-button');
+                menuItem.setAttribute('data-role', 'button');
+                menuItem.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    width: 100%;
+                    padding: 0.8em 1em;
+                    border: none;
+                    background: transparent;
+                    color: inherit;
+                    text-align: left;
+                    cursor: pointer;
+                    font-size: inherit;
+                `;
+
+                const icon = document.createElement('span');
+                icon.className = 'material-icons';
+                icon.setAttribute('aria-hidden', 'true');
+                icon.textContent = 'list_alt';
+                icon.style.cssText = `
+                    margin-right: 0.5em;
+                    font-size: 1.5em;
+                `;
+
+                const text = document.createElement('span');
+                text.textContent = 'Media Requests';
+
+                menuItem.appendChild(icon);
+                menuItem.appendChild(text);
+
+                // Add click handler
+                menuItem.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Close the user menu
+                    const userButton = document.querySelector('.headerUserButton');
+                    if (userButton) {
+                        userButton.click(); // Close menu
+                    }
+
+                    // Open requests dropdown
+                    setTimeout(() => {
+                        showDropdown();
+                    }, 100);
+                });
+
+                // Insert at the top of the menu (after home if exists)
+                const firstChild = menu.firstChild;
+                if (firstChild) {
+                    menu.insertBefore(menuItem, firstChild);
+                } else {
+                    menu.appendChild(menuItem);
+                }
+            });
+
+            console.log('[Requests] Menu item added successfully');
+        };
+
+        checkForMenu();
+
+        // Watch for menu being recreated
+        const observer = new MutationObserver(() => {
+            checkForMenu();
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
     }
 
     // ============================================
@@ -1024,7 +1109,7 @@
     // ============================================
 
     function init() {
-        
+
         // Wait for ApiClient to be ready before checking admin
         const waitForApiClient = () => {
             if (window.ApiClient) {
@@ -1034,34 +1119,24 @@
             }
         };
         waitForApiClient();
-        
-        // Add header button with retry logic
+
+        // Add badge to user button and menu item with retry logic
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
-                addRequestsButton();
-                // Retry a few times in case header loads late
-                setTimeout(addRequestsButton, 500);
-                setTimeout(addRequestsButton, 1500);
-                setTimeout(addRequestsButton, 3000);
+                addBadgeToUserButton();
+                addMenuItemToUserMenu();
+                // Retry a few times in case elements load late
+                setTimeout(addBadgeToUserButton, 500);
+                setTimeout(addBadgeToUserButton, 1500);
+                setTimeout(addBadgeToUserButton, 3000);
             });
         } else {
-            addRequestsButton();
-            setTimeout(addRequestsButton, 500);
-            setTimeout(addRequestsButton, 1500);
-            setTimeout(addRequestsButton, 3000);
+            addBadgeToUserButton();
+            addMenuItemToUserMenu();
+            setTimeout(addBadgeToUserButton, 500);
+            setTimeout(addBadgeToUserButton, 1500);
+            setTimeout(addBadgeToUserButton, 3000);
         }
-        
-        // Watch for header being added dynamically
-        const headerObserver = new MutationObserver(() => {
-            if (!document.querySelector('.mui-requests-button, .headerRequestsButton')) {
-                addRequestsButton();
-            }
-        });
-        
-        headerObserver.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
     }
 
     // Start initialization
