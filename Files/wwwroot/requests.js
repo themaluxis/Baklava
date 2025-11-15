@@ -538,18 +538,6 @@
                 <div class="dropdown-series">
                     <h3 style="color: #1e90ff; margin-bottom: 10px;">Series Requests</h3>
                     <div class="dropdown-series-container" style="display: flex; flex-wrap: wrap; gap: 15px; min-height: 50px;"></div>
-                    <hr style="margin: 20px 0; height: 1px; background: rgba(255,255,255,0.1); border: none;">
-                </div>
-
-                <div class="dropdown-approved">
-                    <h3 style="color: #4caf50; margin-bottom: 10px;">Approved</h3>
-                    <div class="dropdown-approved-container" style="display: flex; flex-wrap: wrap; gap: 15px; min-height: 50px;"></div>
-                    <hr style="margin: 20px 0; height: 1px; background: rgba(255,255,255,0.1); border: none;">
-                </div>
-
-                <div class="dropdown-rejected">
-                    <h3 style="color: #f44336; margin-bottom: 10px;">Rejected</h3>
-                    <div class="dropdown-rejected-container" style="display: flex; flex-wrap: wrap; gap: 15px; min-height: 50px;"></div>
                 </div>
             </div>
         `;
@@ -574,36 +562,14 @@
 
         try {
             const requests = await fetchAllRequests();
-            
-            const adminView = await checkAdmin();
-            
-            // For admins: show all non-approved requests (pending) in movies/series lists,
-            // but show only admin-owned approved copies in the Approved row. This
-            // prevents admins from seeing the original user's approved record alongside
-            // their own admin copy.
-            let filteredRequests;
-            if (adminView) {
-                // non-approved (pending/rejected/etc.) for lists
-                filteredRequests = requests.filter(r => r.status !== 'approved');
-            } else {
-                filteredRequests = requests.filter(r => {
-                    return r.username === currentUsername;
-                });
-            }
 
-            // Approved requests are shown in their own row. Admins only see their own approved copies.
-            const approved = adminView
-                ? requests.filter(r => r.status === 'approved' && r.username === currentUsername)
-                : filteredRequests.filter(r => r.status === 'approved');
+            // The popup is for regular users only - they see only their own requests
+            // Admins are routed to the admin page, so this shouldn't be called for admins
+            const filteredRequests = requests.filter(r => r.username === currentUsername);
 
-            // Rejected requests - admins only see their own rejected copies (like approved)
-            const rejected = adminView
-                ? requests.filter(r => r.status === 'rejected' && r.username === currentUsername)
-                : filteredRequests.filter(r => r.status === 'rejected');
-
-            const movies = filteredRequests.filter(r => r.itemType === 'movie' && r.status !== 'approved' && r.status !== 'rejected');
-            const series = filteredRequests.filter(r => r.itemType === 'series' && r.status !== 'approved' && r.status !== 'rejected');
-            
+            // Split by item type - include ALL statuses (pending, approved, rejected)
+            const movies = filteredRequests.filter(r => r.itemType === 'movie');
+            const series = filteredRequests.filter(r => r.itemType === 'series');
 
             moviesContainer.innerHTML = '';
             seriesContainer.innerHTML = '';
@@ -612,7 +578,7 @@
                 moviesContainer.appendChild(createPlaceholderCard());
             } else {
                 for (const req of movies) {
-                    moviesContainer.appendChild(await createRequestCard(req, adminView));
+                    moviesContainer.appendChild(await createRequestCard(req, false));
                 }
             }
 
@@ -620,38 +586,10 @@
                 seriesContainer.appendChild(createPlaceholderCard());
             } else {
                 for (const req of series) {
-                    seriesContainer.appendChild(await createRequestCard(req, adminView));
+                    seriesContainer.appendChild(await createRequestCard(req, false));
                 }
             }
 
-            // Approved section
-            const approvedContainer = dropdown.querySelector('.dropdown-approved-container');
-            if (approvedContainer) {
-                if (approved && approved.length > 0) {
-                    approvedContainer.innerHTML = '';
-                    for (const req of approved) {
-                        approvedContainer.appendChild(await createRequestCard(req, adminView));
-                    }
-                } else {
-                    approvedContainer.innerHTML = '';
-                    approvedContainer.appendChild(createPlaceholderCard());
-                }
-            }
-
-            // Rejected section
-            const rejectedContainer = dropdown.querySelector('.dropdown-rejected-container');
-            if (rejectedContainer) {
-                if (rejected && rejected.length > 0) {
-                    rejectedContainer.innerHTML = '';
-                    for (const req of rejected) {
-                        rejectedContainer.appendChild(await createRequestCard(req, adminView));
-                    }
-                } else {
-                    rejectedContainer.innerHTML = '';
-                    rejectedContainer.appendChild(createPlaceholderCard());
-                }
-            }
-            
             // Update notification badge after loading requests
             updateNotificationBadge();
         } catch (err) {
@@ -865,7 +803,7 @@
                 menuItem.appendChild(text);
 
                 // Add click handler
-                menuItem.addEventListener('click', (e) => {
+                menuItem.addEventListener('click', async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
 
@@ -875,10 +813,23 @@
                         backdrop.click();
                     }
 
-                    // Open requests dropdown
-                    setTimeout(() => {
-                        showDropdown();
-                    }, 100);
+                    // Check if user is admin
+                    const adminView = await checkAdmin();
+
+                    if (adminView) {
+                        // Route admins to the admin page
+                        const adminPageUrl = '/web/configurationpage?name=Baklava.AdminRequests';
+                        if (window.Dashboard && window.Dashboard.navigate) {
+                            window.Dashboard.navigate(adminPageUrl);
+                        } else {
+                            window.location.href = adminPageUrl;
+                        }
+                    } else {
+                        // Open requests dropdown for regular users
+                        setTimeout(() => {
+                            showDropdown();
+                        }, 100);
+                    }
                 });
 
                 // Insert at the top of the menu
@@ -918,7 +869,7 @@
                     menuItem.appendChild(icon);
                     menuItem.appendChild(text);
 
-                    menuItem.addEventListener('click', (e) => {
+                    menuItem.addEventListener('click', async (e) => {
                         e.preventDefault();
                         e.stopPropagation();
 
@@ -928,7 +879,21 @@
                             backdrop.click();
                         }
 
-                        showDropdown();
+                        // Check if user is admin
+                        const adminView = await checkAdmin();
+
+                        if (adminView) {
+                            // Route admins to the admin page
+                            const adminPageUrl = '/web/configurationpage?name=Baklava.AdminRequests';
+                            if (window.Dashboard && window.Dashboard.navigate) {
+                                window.Dashboard.navigate(adminPageUrl);
+                            } else {
+                                window.location.href = adminPageUrl;
+                            }
+                        } else {
+                            // Open requests dropdown for regular users
+                            showDropdown();
+                        }
                     });
 
                     // Insert after first menu item
@@ -1000,18 +965,6 @@
                         <div class="itemsContainer scrollSlider focuscontainer-x padded-left padded-right" style="white-space:nowrap;overflow-x:auto;"></div>
                     </div>
                 </div>
-                <div class="verticalSection" style="margin-top:3em;">
-                    <h2 class="sectionTitle sectionTitle-cards padded-left">Approved</h2>
-                    <div class="requests-approved-panel">
-                        <div class="itemsContainer scrollSlider focuscontainer-x padded-left padded-right" style="white-space:nowrap;overflow-x:auto;"></div>
-                    </div>
-                </div>
-                <div class="verticalSection" style="margin-top:3em;">
-                    <h2 class="sectionTitle sectionTitle-cards padded-left">Rejected</h2>
-                    <div class="requests-rejected-panel">
-                        <div class="itemsContainer scrollSlider focuscontainer-x padded-left padded-right" style="white-space:nowrap;overflow-x:auto;"></div>
-                    </div>
-                </div>
             </div>
         `;
         
@@ -1047,39 +1000,23 @@
 
         try {
             const requests = await fetchAllRequests();
-            const adminView = await checkAdmin();
-            
-            // Admins: show all non-approved/non-rejected requests in lists, but only their own approved/rejected copies
-            let filteredRequests;
-            if (adminView) {
-                filteredRequests = requests.filter(r => r.status !== 'approved' && r.status !== 'rejected');
-            } else {
-                filteredRequests = requests.filter(r => r.username === currentUsername);
-            }
 
-            const approved = adminView
-                ? requests.filter(r => r.status === 'approved' && r.username === currentUsername)
-                : filteredRequests.filter(r => r.status === 'approved');
+            // This page is for regular users only - they see only their own requests
+            // Admins are routed to the admin page
+            const filteredRequests = requests.filter(r => r.username === currentUsername);
 
-            const rejected = adminView
-                ? requests.filter(r => r.status === 'rejected' && r.username === currentUsername)
-                : filteredRequests.filter(r => r.status === 'rejected');
-
-            const movies = filteredRequests.filter(r => r.itemType === 'movie' && r.status !== 'approved' && r.status !== 'rejected');
-            const series = filteredRequests.filter(r => r.itemType === 'series' && r.status !== 'approved' && r.status !== 'rejected');
+            // Split by item type - include ALL statuses (pending, approved, rejected)
+            const movies = filteredRequests.filter(r => r.itemType === 'movie');
+            const series = filteredRequests.filter(r => r.itemType === 'series');
 
             moviesContainer.innerHTML = '';
             seriesContainer.innerHTML = '';
-            const approvedContainer = page.querySelector('.requests-approved-panel .itemsContainer');
-            const rejectedContainer = page.querySelector('.requests-rejected-panel .itemsContainer');
-            if (approvedContainer) approvedContainer.innerHTML = '';
-            if (rejectedContainer) rejectedContainer.innerHTML = '';
 
             if (movies.length === 0) {
                 moviesContainer.appendChild(createPlaceholderCard());
             } else {
                 for (const req of movies) {
-                    moviesContainer.appendChild(await createRequestCard(req, adminView));
+                    moviesContainer.appendChild(await createRequestCard(req, false));
                 }
             }
 
@@ -1087,29 +1024,7 @@
                 seriesContainer.appendChild(createPlaceholderCard());
             } else {
                 for (const req of series) {
-                    seriesContainer.appendChild(await createRequestCard(req, adminView));
-                }
-            }
-
-            // Populate approved row
-            if (approvedContainer) {
-                if (approved.length === 0) {
-                    approvedContainer.appendChild(createPlaceholderCard());
-                } else {
-                    for (const req of approved) {
-                        approvedContainer.appendChild(await createRequestCard(req, adminView));
-                    }
-                }
-            }
-
-            // Populate rejected row
-            if (rejectedContainer) {
-                if (rejected.length === 0) {
-                    rejectedContainer.appendChild(createPlaceholderCard());
-                } else {
-                    for (const req of rejected) {
-                        rejectedContainer.appendChild(await createRequestCard(req, adminView));
-                    }
+                    seriesContainer.appendChild(await createRequestCard(req, false));
                 }
             }
         } catch (err) {
