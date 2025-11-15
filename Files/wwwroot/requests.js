@@ -792,10 +792,33 @@
     function addMenuItemToUserMenu() {
         // Wait for user menu to be available
         const checkForMenu = () => {
-            // Look for the user menu dropdown
-            const userMenus = document.querySelectorAll('.headerUserButtonRound + div[data-role="controlgroup"]');
+            // Try multiple selectors to find the user menu
+            let userMenus = [];
 
-            if (userMenus.length === 0) {
+            // Try different common Jellyfin menu patterns
+            const selectors = [
+                '.headerUserButtonRound + div[data-role="controlgroup"]',
+                '.headerUserButton + div[data-role="controlgroup"]',
+                'div[data-role="controlgroup"]',
+                '.mainDrawer-scrollContainer .verticalSection'
+            ];
+
+            for (const selector of selectors) {
+                const found = document.querySelectorAll(selector);
+                if (found.length > 0) {
+                    userMenus = Array.from(found);
+                    console.log('[Requests] Found user menu with selector:', selector);
+                    break;
+                }
+            }
+
+            // Also check for main drawer menu items
+            const drawerButtons = document.querySelectorAll('.navMenuOption');
+            if (drawerButtons.length > 0) {
+                console.log('[Requests] Found drawer menu buttons');
+            }
+
+            if (userMenus.length === 0 && drawerButtons.length === 0) {
                 setTimeout(checkForMenu, 500);
                 return;
             }
@@ -807,8 +830,8 @@
 
             console.log('[Requests] Adding menu item to user menu');
 
+            // Add to controlgroup menus if found
             userMenus.forEach(menu => {
-                // Create menu item
                 const menuItem = document.createElement('button');
                 menuItem.className = 'emby-button baklava-requests-menu-item';
                 menuItem.setAttribute('is', 'emby-button');
@@ -847,9 +870,9 @@
                     e.stopPropagation();
 
                     // Close the user menu
-                    const userButton = document.querySelector('.headerUserButton');
-                    if (userButton) {
-                        userButton.click(); // Close menu
+                    const backdrop = document.querySelector('.dockedMenuBackdrop');
+                    if (backdrop) {
+                        backdrop.click();
                     }
 
                     // Open requests dropdown
@@ -858,7 +881,7 @@
                     }, 100);
                 });
 
-                // Insert at the top of the menu (after home if exists)
+                // Insert at the top of the menu
                 const firstChild = menu.firstChild;
                 if (firstChild) {
                     menu.insertBefore(menuItem, firstChild);
@@ -867,19 +890,78 @@
                 }
             });
 
+            // If we found drawer buttons, add there too
+            if (drawerButtons.length > 0 && userMenus.length === 0) {
+                const drawerContainer = drawerButtons[0].parentElement;
+                if (drawerContainer && !drawerContainer.querySelector('.baklava-requests-menu-item')) {
+                    const menuItem = document.createElement('a');
+                    menuItem.className = 'navMenuOption baklava-requests-menu-item';
+                    menuItem.setAttribute('is', 'emby-linkbutton');
+                    menuItem.href = '#';
+                    menuItem.style.cssText = `
+                        display: flex;
+                        align-items: center;
+                        padding: 0.8em 1em;
+                        text-decoration: none;
+                        color: inherit;
+                    `;
+
+                    const icon = document.createElement('span');
+                    icon.className = 'material-icons navMenuOptionIcon';
+                    icon.setAttribute('aria-hidden', 'true');
+                    icon.textContent = 'list_alt';
+
+                    const text = document.createElement('span');
+                    text.className = 'navMenuOptionText';
+                    text.textContent = 'Media Requests';
+
+                    menuItem.appendChild(icon);
+                    menuItem.appendChild(text);
+
+                    menuItem.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        // Close drawer
+                        const backdrop = document.querySelector('.dockedMenuBackdrop');
+                        if (backdrop) {
+                            backdrop.click();
+                        }
+
+                        showDropdown();
+                    });
+
+                    // Insert after first menu item
+                    if (drawerButtons[0].nextSibling) {
+                        drawerContainer.insertBefore(menuItem, drawerButtons[0].nextSibling);
+                    } else {
+                        drawerContainer.appendChild(menuItem);
+                    }
+                }
+            }
+
             console.log('[Requests] Menu item added successfully');
         };
 
+        // Initial check
         checkForMenu();
 
         // Watch for menu being recreated
         const observer = new MutationObserver(() => {
-            checkForMenu();
+            setTimeout(checkForMenu, 100);
         });
 
         observer.observe(document.body, {
             childList: true,
             subtree: true
+        });
+
+        // Also listen for clicks on user button to trigger menu check
+        document.addEventListener('click', (e) => {
+            const target = e.target.closest('.headerUserButton, .headerUserButtonRound');
+            if (target) {
+                setTimeout(checkForMenu, 200);
+            }
         });
     }
 
