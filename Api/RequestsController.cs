@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Net.Http;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -145,6 +146,10 @@ namespace Baklava.Api
             Plugin.Instance.SaveConfiguration();
 
             _logger.LogInformation($"[RequestsController] Created request: {request.Id}");
+
+            // Send Discord notification if webhook is configured
+            _ = SendDiscordNotification(request);
+
             return Ok(request);
         }
 
@@ -389,6 +394,87 @@ namespace Baklava.Api
             }
             
             return Ok(new { removed, remaining = validRequests.Count });
+        }
+
+        /// <summary>
+        /// Send Discord notification for new media request
+        /// </summary>
+        private async System.Threading.Tasks.Task SendDiscordNotification(MediaRequest request)
+        {
+            try
+            {
+                var config = Plugin.Instance?.Configuration;
+                var webhookUrl = config?.DiscordWebhookUrl;
+
+                // Skip if webhook URL is not configured
+                if (string.IsNullOrWhiteSpace(webhookUrl))
+                {
+                    _logger.LogDebug("[RequestsController] Discord webhook not configured, skipping notification");
+                    return;
+                }
+
+                // Build Discord embed message
+                var mediaType = request.ItemType == "series" ? "Series" : "Movie";
+                var title = $"{request.Title ?? "Unknown"} ({request.Year ?? "N/A"})";
+                var color = request.ItemType == "series" ? 3447003 : 15844367; // Blue for series, gold for movies
+
+                // Extract actual URL from CSS url() format if present
+                var imageUrl = request.Img;
+                if (!string.IsNullOrEmpty(imageUrl))
+                {
+                    // Handle url("...") or url('...') format
+                    if (imageUrl.StartsWith("url("))
+                    {
+                        imageUrl = imageUrl.Substring(4).TrimEnd(')').Trim('"', '\'');
+                    }
+                }
+
+                // Build JSON manually to ensure proper formatting for Discord API
+                var embedJson = new StringBuilder();
+                embedJson.Append("{");
+                embedJson.AppendFormat("\"title\":\"{0}\",", title.Replace("\"", "\\\""));
+                embedJson.AppendFormat("\"description\":\"Requested by: **{0}**\",", (request.Username ?? "Unknown").Replace("\"", "\\\""));
+                embedJson.AppendFormat("\"color\":{0},", color);
+                embedJson.Append("\"fields\":[");
+                embedJson.AppendFormat("{{\"name\":\"Type\",\"value\":\"{0}\",\"inline\":true}},", mediaType);
+                embedJson.AppendFormat("{{\"name\":\"Status\",\"value\":\"{0}\",\"inline\":true}},", (request.Status?.ToUpper() ?? "PENDING"));
+                embedJson.AppendFormat("{{\"name\":\"TMDB ID\",\"value\":\"{0}\",\"inline\":true}}", request.TmdbId ?? "N/A");
+                embedJson.Append("],");
+
+                // Only add thumbnail if image URL is present
+                if (!string.IsNullOrEmpty(imageUrl))
+                {
+                    embedJson.AppendFormat("\"thumbnail\":{{\"url\":\"{0}\"}},", imageUrl.Replace("\"", "\\\""));
+                }
+
+                embedJson.AppendFormat("\"timestamp\":\"{0}\"", DateTimeOffset.UtcNow.ToString("o"));
+                embedJson.Append("}");
+
+                var payloadJson = $"{{\"content\":\"📢 **New Media Request**\",\"embeds\":[{embedJson}]}}";
+
+                using var http = new HttpClient();
+                var content = new StringContent(payloadJson, Encoding.UTF8, "application/json");
+
+                _logger.LogInformation("[RequestsController] Sending Discord notification for request: {RequestId}", request.Id);
+                _logger.LogInformation("[RequestsController] Discord payload: {Payload}", payloadJson);
+
+                var response = await http.PostAsync(webhookUrl, content).ConfigureAwait(false);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("[RequestsController] Discord notification sent successfully for request: {RequestId}", request.Id);
+                }
+                else
+                {
+                    var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    _logger.LogWarning("[RequestsController] Discord notification failed with status {StatusCode}: {Response}",
+                        response.StatusCode, responseBody);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[RequestsController] Error sending Discord notification for request: {RequestId}", request?.Id);
+            }
         }
     }
 

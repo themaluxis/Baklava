@@ -171,12 +171,12 @@
             border-radius: 6px;
             margin-bottom: 8px;
         `;
-        imgDiv.style.backgroundImage = request.Img;
+        imgDiv.style.backgroundImage = request.img;
         card.appendChild(imgDiv);
 
-        if (adminView && request.Username) {
+        if (adminView && request.username) {
             const userBadge = document.createElement('div');
-            userBadge.textContent = request.Username;
+            userBadge.textContent = request.username;
             userBadge.style.cssText = `
                 position: absolute;
                 top: 8px;
@@ -195,7 +195,7 @@
             card.appendChild(userBadge);
         }
 
-        if (request.Status === 'pending') {
+        if (request.status === 'pending') {
             const statusBadge = document.createElement('div');
             statusBadge.className = 'request-status-badge';
             statusBadge.dataset.status = 'pending';
@@ -212,7 +212,7 @@
                 font-weight: 600;
             `;
             card.appendChild(statusBadge);
-        } else if (request.Status === 'approved') {
+        } else if (request.status === 'approved') {
             const statusBadge = document.createElement('div');
             statusBadge.className = 'request-status-badge';
             statusBadge.dataset.status = 'approved';
@@ -229,7 +229,7 @@
                 font-weight: 600;
             `;
             card.appendChild(statusBadge);
-        } else if (request.Status === 'rejected') {
+        } else if (request.status === 'rejected') {
             const statusBadge = document.createElement('div');
             statusBadge.className = 'request-status-badge';
             statusBadge.dataset.status = 'rejected';
@@ -278,8 +278,8 @@
                 });
                 deleteBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    if (confirm(`Delete rejected request for "${request.Title}"?`)) {
-                        await deleteRequest(request.Id);
+                    if (confirm(`Delete rejected request for "${request.title}"?`)) {
+                        await deleteRequest(request.id);
                     }
                 });
                 card.appendChild(deleteBtn);
@@ -331,22 +331,22 @@
 
     function openRequestModal(request, adminView) {
         const currentUserName = currentUsername;
-        const isOwnRequest = request.Username === currentUserName;
-        
+        const isOwnRequest = request.username === currentUserName;
+
         document.dispatchEvent(new CustomEvent('openDetailsModal', {
             detail: {
                 item: {
-                    Name: request.Title,
-                    ProductionYear: request.Year,
-                    tmdbId: request.TmdbId,
-                    imdbId: request.ImdbId,
-                    jellyfinId: request.JellyfinId,
-                    itemType: request.ItemType
+                    Name: request.title,
+                    ProductionYear: request.year,
+                    tmdbId: request.tmdbId,
+                    imdbId: request.imdbId,
+                    jellyfinId: request.jellyfinId,
+                    itemType: request.itemType
                 },
                 isRequestMode: true,
-                requestId: request.Id,
-                requestUsername: request.Username,
-                requestStatus: request.Status,
+                requestId: request.id,
+                requestUsername: request.username,
+                requestStatus: request.status,
                 isAdmin: adminView,
                 isOwnRequest: isOwnRequest
             }
@@ -468,25 +468,25 @@
             let filteredRequests;
             if (adminView) {
                 // non-approved (pending/rejected/etc.) for lists
-                filteredRequests = requests.filter(r => r.Status !== 'approved');
+                filteredRequests = requests.filter(r => r.status !== 'approved');
             } else {
                 filteredRequests = requests.filter(r => {
-                    return r.Username === currentUsername;
+                    return r.username === currentUsername;
                 });
             }
 
             // Approved requests are shown in their own row. Admins only see their own approved copies.
             const approved = adminView
-                ? requests.filter(r => r.Status === 'approved' && r.Username === currentUsername)
-                : filteredRequests.filter(r => r.Status === 'approved');
+                ? requests.filter(r => r.status === 'approved' && r.username === currentUsername)
+                : filteredRequests.filter(r => r.status === 'approved');
 
             // Rejected requests - admins only see their own rejected copies (like approved)
             const rejected = adminView
-                ? requests.filter(r => r.Status === 'rejected' && r.Username === currentUsername)
-                : filteredRequests.filter(r => r.Status === 'rejected');
+                ? requests.filter(r => r.status === 'rejected' && r.username === currentUsername)
+                : filteredRequests.filter(r => r.status === 'rejected');
 
-            const movies = filteredRequests.filter(r => r.ItemType === 'movie' && r.Status !== 'approved' && r.Status !== 'rejected');
-            const series = filteredRequests.filter(r => r.ItemType === 'series' && r.Status !== 'approved' && r.Status !== 'rejected');
+            const movies = filteredRequests.filter(r => r.itemType === 'movie' && r.status !== 'approved' && r.status !== 'rejected');
+            const series = filteredRequests.filter(r => r.itemType === 'series' && r.status !== 'approved' && r.status !== 'rejected');
             
 
             moviesContainer.innerHTML = '';
@@ -597,10 +597,10 @@
             
             if (adminView) {
                 // For admins: count all pending requests (from any user)
-                pendingCount = requests.filter(r => r.Status === 'pending').length;
+                pendingCount = requests.filter(r => r.status === 'pending').length;
             } else {
                 // For regular users: count only their own pending requests
-                pendingCount = requests.filter(r => r.Status === 'pending' && r.Username === username).length;
+                pendingCount = requests.filter(r => r.status === 'pending' && r.username === username).length;
             }
             
             console.log('[Requests.updateNotificationBadge] Pending count:', pendingCount, '(admin:', adminView, ')');
@@ -769,21 +769,21 @@
             // Admins: show all non-approved/non-rejected requests in lists, but only their own approved/rejected copies
             let filteredRequests;
             if (adminView) {
-                filteredRequests = requests.filter(r => r.Status !== 'approved' && r.Status !== 'rejected');
+                filteredRequests = requests.filter(r => r.status !== 'approved' && r.status !== 'rejected');
             } else {
-                filteredRequests = requests.filter(r => r.Username === currentUsername);
+                filteredRequests = requests.filter(r => r.username === currentUsername);
             }
 
             const approved = adminView
-                ? requests.filter(r => r.Status === 'approved' && r.Username === currentUsername)
-                : filteredRequests.filter(r => r.Status === 'approved');
+                ? requests.filter(r => r.status === 'approved' && r.username === currentUsername)
+                : filteredRequests.filter(r => r.status === 'approved');
 
             const rejected = adminView
-                ? requests.filter(r => r.Status === 'rejected' && r.Username === currentUsername)
-                : filteredRequests.filter(r => r.Status === 'rejected');
+                ? requests.filter(r => r.status === 'rejected' && r.username === currentUsername)
+                : filteredRequests.filter(r => r.status === 'rejected');
 
-            const movies = filteredRequests.filter(r => r.ItemType === 'movie' && r.Status !== 'approved' && r.Status !== 'rejected');
-            const series = filteredRequests.filter(r => r.ItemType === 'series' && r.Status !== 'approved' && r.Status !== 'rejected');
+            const movies = filteredRequests.filter(r => r.itemType === 'movie' && r.status !== 'approved' && r.status !== 'rejected');
+            const series = filteredRequests.filter(r => r.itemType === 'series' && r.status !== 'approved' && r.status !== 'rejected');
 
             moviesContainer.innerHTML = '';
             seriesContainer.innerHTML = '';
