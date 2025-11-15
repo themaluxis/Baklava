@@ -229,16 +229,16 @@ namespace Baklava.Api
                             if ((itemType == "series" && itemTypeName == "Series") || (itemType == "movie" && itemTypeName == "Movie") || string.IsNullOrEmpty(itemType))
                             {
                                 inLibrary = true;
-                                
+
                                 _logger.LogInformation("[MetadataController.CheckLibraryStatus] Found item in library by JellyfinId: {Id}, type: {Type}",
                                     jellyfinId, itemTypeName);
-                                
+
                                 // Extract provider IDs for request checking
                                 if (itemById.ProviderIds != null)
                                 {
                                     itemById.ProviderIds.TryGetValue("Imdb", out foundImdbId);
                                     itemById.ProviderIds.TryGetValue("Tmdb", out foundTmdbId);
-                                    
+
                                     _logger.LogInformation("[MetadataController.CheckLibraryStatus] Extracted provider IDs: imdb={Imdb}, tmdb={Tmdb}",
                                         foundImdbId ?? "null", foundTmdbId ?? "null");
                                 }
@@ -246,35 +246,55 @@ namespace Baklava.Api
                         }
                         else
                         {
-                            _logger.LogInformation("[MetadataController.CheckLibraryStatus] JellyfinId {Id} not found in library - item may have been deleted",
+                            _logger.LogInformation("[MetadataController.CheckLibraryStatus] JellyfinId {Id} not found in library - item may have been deleted, falling back to TMDB/IMDB check",
                                 jellyfinId);
                         }
                     }
-                    else if (!string.IsNullOrEmpty(imdbId) || !string.IsNullOrEmpty(tmdbId))
+
+                    // If not found by jellyfinId OR if jellyfinId wasn't provided, try TMDB/IMDB ID
+                    if (!inLibrary && (!string.IsNullOrEmpty(imdbId) || !string.IsNullOrEmpty(tmdbId)))
                     {
+                        _logger.LogInformation("[MetadataController.CheckLibraryStatus] Searching library by TMDB/IMDB ID: tmdb={Tmdb}, imdb={Imdb}",
+                            tmdbId ?? "null", imdbId ?? "null");
+
                         // Query items without type filter first, then filter manually
                         var allItems = _libraryManager.GetItemList(new InternalItemsQuery
                         {
                             Recursive = true
                         });
 
-                        inLibrary = allItems.Where(item =>
+                        var foundItem = allItems.FirstOrDefault(item =>
                         {
                             // Filter by type
                             var itemTypeName = item.GetType().Name;
                             if (itemType == "series" && itemTypeName != "Series") return false;
                             if (itemType == "movie" && itemTypeName != "Movie") return false;
-                            
+
                             var providerIds = item.ProviderIds;
                             if (providerIds == null) return false;
-                            
+
                             if (imdbId != null && providerIds.TryGetValue("Imdb", out var itemImdb) && itemImdb == imdbId)
                                 return true;
                             if (tmdbId != null && providerIds.TryGetValue("Tmdb", out var itemTmdb) && itemTmdb == tmdbId)
                                 return true;
-                                
+
                             return false;
-                        }).Any();
+                        });
+
+                        if (foundItem != null)
+                        {
+                            inLibrary = true;
+                            _logger.LogInformation("[MetadataController.CheckLibraryStatus] Found item in library by TMDB/IMDB ID: {ItemId}", foundItem.Id);
+
+                            // Extract IDs if we didn't have them
+                            if (foundItem.ProviderIds != null)
+                            {
+                                if (string.IsNullOrEmpty(foundImdbId))
+                                    foundItem.ProviderIds.TryGetValue("Imdb", out foundImdbId);
+                                if (string.IsNullOrEmpty(foundTmdbId))
+                                    foundItem.ProviderIds.TryGetValue("Tmdb", out foundTmdbId);
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
