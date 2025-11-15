@@ -254,51 +254,6 @@
                 z-index: 2;
             `;
             card.appendChild(statusBadge);
-
-            // Add delete button for rejected requests
-            if (adminView) {
-                const deleteBtn = document.createElement('button');
-                deleteBtn.innerHTML = '×';
-                deleteBtn.title = 'Delete request';
-                deleteBtn.style.cssText = `
-                    position: absolute;
-                    bottom: 50px;
-                    right: 8px;
-                    width: 32px;
-                    height: 32px;
-                    border-radius: 50%;
-                    background: rgba(244, 67, 54, 0.9);
-                    color: #fff;
-                    border: 2px solid rgba(255, 255, 255, 0.3);
-                    font-size: 24px;
-                    line-height: 24px;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 0;
-                    transition: all 0.2s ease;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-                    z-index: 3;
-                `;
-                deleteBtn.addEventListener('mouseover', () => {
-                    deleteBtn.style.background = 'rgba(244, 67, 54, 1)';
-                    deleteBtn.style.transform = 'scale(1.1)';
-                    deleteBtn.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                });
-                deleteBtn.addEventListener('mouseout', () => {
-                    deleteBtn.style.background = 'rgba(244, 67, 54, 0.9)';
-                    deleteBtn.style.transform = 'scale(1)';
-                    deleteBtn.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                });
-                deleteBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (confirm(`Delete rejected request for "${request.title}"?`)) {
-                        await deleteRequest(request.id);
-                    }
-                });
-                card.appendChild(deleteBtn);
-            }
         }
 
         // Username badge (bottom-left, only in admin view)
@@ -308,7 +263,7 @@
             userBadge.title = `Requested by ${request.username}`;
             userBadge.style.cssText = `
                 position: absolute;
-                bottom: 46px;
+                bottom: 86px;
                 left: 6px;
                 background: rgba(30, 144, 255, 0.95);
                 color: #fff;
@@ -367,6 +322,82 @@
 
         card.appendChild(titleDiv);
 
+        // Admin action buttons
+        if (adminView) {
+            if (request.status === 'pending') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.style.cssText = `
+                    padding: 8px;
+                    background: rgba(15, 15, 15, 0.9);
+                    display: flex;
+                    gap: 8px;
+                `;
+
+                const approveBtn = document.createElement('button');
+                approveBtn.textContent = 'Approve';
+                approveBtn.className = 'raised button-submit emby-button';
+                approveBtn.style.cssText = `
+                    flex: 1;
+                    padding: 6px;
+                    background: rgba(76, 175, 80, 0.9);
+                    font-size: 11px;
+                    font-weight: 600;
+                `;
+                approveBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await updateRequestStatus(request.id, 'approved', currentUsername);
+                    await loadDropdownRequests();
+                });
+
+                const rejectBtn = document.createElement('button');
+                rejectBtn.textContent = 'Reject';
+                rejectBtn.className = 'raised button-cancel emby-button';
+                rejectBtn.style.cssText = `
+                    flex: 1;
+                    padding: 6px;
+                    background: rgba(244, 67, 54, 0.9);
+                    font-size: 11px;
+                    font-weight: 600;
+                `;
+                rejectBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await updateRequestStatus(request.id, 'rejected', currentUsername);
+                    await loadDropdownRequests();
+                });
+
+                actionsDiv.appendChild(approveBtn);
+                actionsDiv.appendChild(rejectBtn);
+                card.appendChild(actionsDiv);
+            } else if (request.status === 'approved' || request.status === 'rejected') {
+                const deleteDiv = document.createElement('div');
+                deleteDiv.style.cssText = `
+                    padding: 8px;
+                    background: rgba(15, 15, 15, 0.9);
+                `;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.className = 'raised emby-button';
+                deleteBtn.style.cssText = `
+                    width: 100%;
+                    padding: 6px;
+                    background: rgba(150, 150, 150, 0.8);
+                    font-size: 11px;
+                    font-weight: 600;
+                `;
+                deleteBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (confirm(`Delete request for "${request.title}"?`)) {
+                        await deleteRequest(request.id);
+                        await loadDropdownRequests();
+                    }
+                });
+
+                deleteDiv.appendChild(deleteBtn);
+                card.appendChild(deleteDiv);
+            }
+        }
+
         // Hover effects
         card.addEventListener('mouseenter', () => {
             card.style.transform = 'translateY(-4px) scale(1.02)';
@@ -378,9 +409,12 @@
             card.style.boxShadow = 'none';
         });
 
-        card.addEventListener('click', () => {
-            openRequestModal(request, adminView);
-        });
+        // Only open modal for non-admin or when not clicking action buttons
+        if (!adminView) {
+            card.addEventListener('click', () => {
+                openRequestModal(request, adminView);
+            });
+        }
 
         return card;
     }
@@ -808,7 +842,7 @@
                 menuItem.appendChild(text);
 
                 // Add click handler
-                menuItem.addEventListener('click', async (e) => {
+                menuItem.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
 
@@ -818,20 +852,10 @@
                         backdrop.click();
                     }
 
-                    // Check if user is admin
-                    const adminView = await checkAdmin();
-
-                    if (adminView) {
-                        // Show admin requests page
-                        setTimeout(() => {
-                            showAdminRequestsPage();
-                        }, 100);
-                    } else {
-                        // Open requests dropdown for regular users
-                        setTimeout(() => {
-                            showDropdown();
-                        }, 100);
-                    }
+                    // Open requests popup for all users
+                    setTimeout(() => {
+                        showDropdown();
+                    }, 100);
                 });
 
                 // Insert at the top of the menu
@@ -871,7 +895,7 @@
                     menuItem.appendChild(icon);
                     menuItem.appendChild(text);
 
-                    menuItem.addEventListener('click', async (e) => {
+                    menuItem.addEventListener('click', (e) => {
                         e.preventDefault();
                         e.stopPropagation();
 
@@ -881,20 +905,10 @@
                             backdrop.click();
                         }
 
-                        // Check if user is admin
-                        const adminView = await checkAdmin();
-
-                        if (adminView) {
-                            // Show admin requests page
-                            setTimeout(() => {
-                                showAdminRequestsPage();
-                            }, 100);
-                        } else {
-                            // Open requests dropdown for regular users
-                            setTimeout(() => {
-                                showDropdown();
-                            }, 100);
-                        }
+                        // Open requests popup for all users
+                        setTimeout(() => {
+                            showDropdown();
+                        }, 100);
                     });
 
                     // Insert after first menu item
