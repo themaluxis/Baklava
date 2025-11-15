@@ -343,10 +343,13 @@
                     font-size: 11px;
                     font-weight: 600;
                 `;
-                approveBtn.addEventListener('click', async (e) => {
+                approveBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    await updateRequestStatus(request.id, 'approved', currentUsername);
-                    await loadDropdownRequests();
+                    // Navigate to item details page - let user manually approve from there
+                    const id = request.jellyfinId || request.tmdbId || request.imdbId;
+                    if (id) {
+                        window.location.hash = '#/details?id=' + encodeURIComponent(id);
+                    }
                 });
 
                 const rejectBtn = document.createElement('button');
