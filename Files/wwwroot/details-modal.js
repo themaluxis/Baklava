@@ -373,58 +373,12 @@
             }
         });
 
-    approveBtn.addEventListener('click', async () => {
-            const requestId = overlay.dataset.requestId;
-            const itemId = overlay.dataset.itemId;
-            const tmdbId = overlay.dataset.tmdbId;
-            const imdbId = overlay.dataset.imdbId;
-
-            console.log('[DetailsModal] Approve clicked - requestId:', requestId, 'itemId:', itemId);
-
-            if (!requestId) {
-                console.warn('[DetailsModal] No requestId found, closing modal');
-                approveBtn.textContent = 'No-op';
-                approveBtn.style.background = '#888';
-                setTimeout(() => hideModal(), 400);
-                return;
-            }
-
-            // Immediate UI feedback
-            approveBtn.disabled = true;
-            approveBtn.textContent = 'Approved';
-            approveBtn.style.background = '#888';
-
-            // Update request status on server
-            if (requestId && window.RequestManager && typeof window.RequestManager.updateStatus === 'function') {
-                try {
-                    let approver = null;
-                    try {
-                        const current = await window.ApiClient.getCurrentUser();
-                        approver = current?.Name || null;
-                    } catch (err) {
-                        try {
-                            const user = await window.ApiClient.getUser(window.ApiClient.getCurrentUserId());
-                            approver = user?.Name || null;
-                        } catch {
-                            approver = null;
-                        }
-                    }
-                    console.log('[DetailsModal] Updating request status to approved by:', approver);
-                    await window.RequestManager.updateStatus(requestId, 'approved', approver);
-                } catch (e) {
-                    console.warn('[DetailsModal] Failed to update request status:', e);
-                }
-            }
-
-            // Navigate to details page exactly like the Import button does
-            const id = itemId || tmdbId || imdbId;
+    approveBtn.addEventListener('click', () => {
+            // Simply navigate to details page - same as Import button
+            const id = overlay.dataset.itemId || overlay.dataset.tmdbId || overlay.dataset.imdbId;
             if (id) {
-                console.log('[DetailsModal] Navigating to details page with id:', id);
                 hideModal();
                 window.location.hash = '#/details?id=' + encodeURIComponent(id);
-            } else {
-                console.error('[DetailsModal] No ID available for navigation');
-                hideModal();
             }
         });
 
