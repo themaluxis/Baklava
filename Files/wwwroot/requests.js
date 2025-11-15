@@ -154,47 +154,43 @@
         card.dataset.requestId = request.Id || request.id || request.requestId || '';
         card.style.cssText = `
             display: inline-block;
-            width: 100px;
+            width: 140px;
             cursor: pointer;
-            text-align: center;
             color: #ccc;
             position: relative;
             flex-shrink: 0;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border-radius: 8px;
+            overflow: hidden;
+            background: rgba(30, 30, 30, 0.5);
         `;
 
         const imgDiv = document.createElement('div');
         imgDiv.style.cssText = `
             width: 100%;
-            height: 150px;
+            height: 210px;
             background-size: cover;
             background-position: center;
-            border-radius: 6px;
-            margin-bottom: 8px;
+            position: relative;
+            background-color: #1a1a1a;
         `;
         imgDiv.style.backgroundImage = request.img;
+
+        // Add overlay gradient for better badge visibility
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+            pointer-events: none;
+        `;
+        imgDiv.appendChild(overlay);
         card.appendChild(imgDiv);
 
-        if (adminView && request.username) {
-            const userBadge = document.createElement('div');
-            userBadge.textContent = request.username;
-            userBadge.style.cssText = `
-                position: absolute;
-                top: 8px;
-                left: 8px;
-                background: rgba(30, 144, 255, 0.9);
-                color: #fff;
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                max-width: 85px;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            `;
-            card.appendChild(userBadge);
-        }
-
+        // Status badge (top-right)
         if (request.status === 'pending') {
             const statusBadge = document.createElement('div');
             statusBadge.className = 'request-status-badge';
@@ -202,48 +198,60 @@
             statusBadge.textContent = 'Pending';
             statusBadge.style.cssText = `
                 position: absolute;
-                top: 8px;
-                right: 8px;
-                background: rgba(255, 152, 0, 0.9);
+                top: 6px;
+                right: 6px;
+                background: rgba(255, 152, 0, 0.95);
                 color: #fff;
                 padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                z-index: 2;
             `;
             card.appendChild(statusBadge);
         } else if (request.status === 'approved') {
             const statusBadge = document.createElement('div');
             statusBadge.className = 'request-status-badge';
             statusBadge.dataset.status = 'approved';
-            statusBadge.textContent = 'Approved';
+            statusBadge.textContent = '✓ Approved';
             statusBadge.style.cssText = `
                 position: absolute;
-                top: 8px;
-                right: 8px;
+                top: 6px;
+                right: 6px;
                 background: rgba(76, 175, 80, 0.95);
                 color: #fff;
                 padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                z-index: 2;
             `;
             card.appendChild(statusBadge);
         } else if (request.status === 'rejected') {
             const statusBadge = document.createElement('div');
             statusBadge.className = 'request-status-badge';
             statusBadge.dataset.status = 'rejected';
-            statusBadge.textContent = 'Rejected';
+            statusBadge.textContent = '✗ Rejected';
             statusBadge.style.cssText = `
                 position: absolute;
-                top: 8px;
-                right: 8px;
+                top: 6px;
+                right: 6px;
                 background: rgba(244, 67, 54, 0.95);
                 color: #fff;
                 padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                z-index: 2;
             `;
             card.appendChild(statusBadge);
 
@@ -251,16 +259,17 @@
             if (adminView) {
                 const deleteBtn = document.createElement('button');
                 deleteBtn.innerHTML = '×';
+                deleteBtn.title = 'Delete request';
                 deleteBtn.style.cssText = `
                     position: absolute;
-                    bottom: 40px;
+                    bottom: 50px;
                     right: 8px;
-                    width: 28px;
-                    height: 28px;
+                    width: 32px;
+                    height: 32px;
                     border-radius: 50%;
                     background: rgba(244, 67, 54, 0.9);
                     color: #fff;
-                    border: none;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
                     font-size: 24px;
                     line-height: 24px;
                     cursor: pointer;
@@ -268,13 +277,19 @@
                     align-items: center;
                     justify-content: center;
                     padding: 0;
-                    transition: background 0.2s;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+                    z-index: 3;
                 `;
                 deleteBtn.addEventListener('mouseover', () => {
                     deleteBtn.style.background = 'rgba(244, 67, 54, 1)';
+                    deleteBtn.style.transform = 'scale(1.1)';
+                    deleteBtn.style.borderColor = 'rgba(255, 255, 255, 0.5)';
                 });
                 deleteBtn.addEventListener('mouseout', () => {
                     deleteBtn.style.background = 'rgba(244, 67, 54, 0.9)';
+                    deleteBtn.style.transform = 'scale(1)';
+                    deleteBtn.style.borderColor = 'rgba(255, 255, 255, 0.3)';
                 });
                 deleteBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
@@ -285,6 +300,83 @@
                 card.appendChild(deleteBtn);
             }
         }
+
+        // Username badge (bottom-left, only in admin view)
+        if (adminView && request.username) {
+            const userBadge = document.createElement('div');
+            userBadge.textContent = request.username;
+            userBadge.title = `Requested by ${request.username}`;
+            userBadge.style.cssText = `
+                position: absolute;
+                bottom: 46px;
+                left: 6px;
+                background: rgba(30, 144, 255, 0.95);
+                color: #fff;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 700;
+                max-width: 120px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                z-index: 2;
+            `;
+            card.appendChild(userBadge);
+        }
+
+        // Title section at bottom
+        const titleDiv = document.createElement('div');
+        titleDiv.style.cssText = `
+            padding: 8px;
+            background: rgba(20, 20, 20, 0.9);
+            min-height: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        `;
+
+        const titleText = document.createElement('div');
+        titleText.textContent = request.title || 'Unknown';
+        titleText.title = request.title || 'Unknown';
+        titleText.style.cssText = `
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            line-height: 1.3;
+            margin-bottom: 2px;
+        `;
+        titleDiv.appendChild(titleText);
+
+        if (request.year) {
+            const yearText = document.createElement('div');
+            yearText.textContent = request.year;
+            yearText.style.cssText = `
+                font-size: 10px;
+                color: #999;
+                font-weight: 500;
+            `;
+            titleDiv.appendChild(yearText);
+        }
+
+        card.appendChild(titleDiv);
+
+        // Hover effects
+        card.addEventListener('mouseenter', () => {
+            card.style.transform = 'translateY(-4px) scale(1.02)';
+            card.style.boxShadow = '0 8px 16px rgba(0,0,0,0.6)';
+        });
+
+        card.addEventListener('mouseleave', () => {
+            card.style.transform = 'translateY(0) scale(1)';
+            card.style.boxShadow = 'none';
+        });
 
         card.addEventListener('click', () => {
             openRequestModal(request, adminView);
@@ -299,32 +391,56 @@
         card.className = 'request-card placeholder-card';
         card.style.cssText = `
             display: inline-block;
-            width: 100px;
-            margin: 10px;
+            width: 140px;
             cursor: default;
-            text-align: center;
             color: #666;
             position: relative;
+            flex-shrink: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            background: rgba(30, 30, 30, 0.3);
+            border: 2px dashed rgba(100, 100, 100, 0.3);
         `;
 
         const imgDiv = document.createElement('div');
         imgDiv.style.cssText = `
             width: 100%;
-            height: 150px;
-            border-radius: 6px;
-            margin-bottom: 8px;
+            height: 210px;
             box-sizing: border-box;
             display: flex;
             align-items: center;
             justify-content: center;
-            border: 2px dashed rgba(150,150,150,0.6);
-            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02));
+            background: linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(0,0,0,0.05) 100%);
         `;
 
-        const inner = document.createElement('div');
-        inner.style.cssText = 'width:60%;height:60%;border-radius:4px;';
-        imgDiv.appendChild(inner);
+        const icon = document.createElement('div');
+        icon.innerHTML = '📋';
+        icon.style.cssText = `
+            font-size: 48px;
+            opacity: 0.2;
+        `;
+        imgDiv.appendChild(icon);
         card.appendChild(imgDiv);
+
+        const titleDiv = document.createElement('div');
+        titleDiv.style.cssText = `
+            padding: 8px;
+            background: rgba(20, 20, 20, 0.5);
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
+        const emptyText = document.createElement('div');
+        emptyText.textContent = 'No requests';
+        emptyText.style.cssText = `
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+        `;
+        titleDiv.appendChild(emptyText);
+        card.appendChild(titleDiv);
 
         return card;
     }
