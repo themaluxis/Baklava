@@ -375,12 +375,11 @@
 
     approveBtn.addEventListener('click', async () => {
             const requestId = overlay.dataset.requestId;
+            const itemId = overlay.dataset.itemId;
             const tmdbId = overlay.dataset.tmdbId;
             const imdbId = overlay.dataset.imdbId;
-            const itemType = overlay.dataset.itemType || 'movie';
-            const itemId = overlay.dataset.itemId;
 
-            console.log('[DetailsModal] Approve clicked - requestId:', requestId, 'itemId:', itemId, 'imdbId:', imdbId, 'tmdbId:', tmdbId);
+            console.log('[DetailsModal] Approve clicked - requestId:', requestId, 'itemId:', itemId);
 
             if (!requestId) {
                 console.warn('[DetailsModal] No requestId found, closing modal');
@@ -395,23 +394,7 @@
             approveBtn.textContent = 'Approved';
             approveBtn.style.background = '#888';
 
-            // Fire server-side proxy to call Gelato (fire-and-forget)
-            if (imdbId) {
-                try {
-                    const isSeries = itemType && itemType.toLowerCase().includes('series');
-                    const proxyPath = isSeries ? `api/gelato/tv/${encodeURIComponent(imdbId)}` : `api/gelato/movie/${encodeURIComponent(imdbId)}`;
-                    const proxyUrl = window.ApiClient.getUrl(proxyPath);
-
-                    console.log('[DetailsModal] Calling Gelato proxy:', proxyUrl);
-                    window.ApiClient.ajax({ type: 'POST', url: proxyUrl }).catch((e) => {
-                        console.warn('[DetailsModal] Gelato proxy call failed:', e);
-                    });
-                } catch (e) {
-                    console.error('[DetailsModal] Error preparing gelato proxy call:', e);
-                }
-            }
-
-            // Update request status on server (fire-and-forget)
+            // Update request status on server
             if (requestId && window.RequestManager && typeof window.RequestManager.updateStatus === 'function') {
                 try {
                     let approver = null;
@@ -427,7 +410,7 @@
                         }
                     }
                     console.log('[DetailsModal] Updating request status to approved by:', approver);
-                    window.RequestManager.updateStatus(requestId, 'approved', approver).catch(() => {});
+                    await window.RequestManager.updateStatus(requestId, 'approved', approver);
                 } catch (e) {
                     console.warn('[DetailsModal] Failed to update request status:', e);
                 }
