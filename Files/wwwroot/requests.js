@@ -753,17 +753,42 @@
 
             console.log('[Requests.updateNotificationBadge] Fetched', requests.length, 'total requests');
 
-            let pendingCount = 0;
+            let pendingRequests = [];
 
             if (adminView) {
-                // For admins: count all pending requests (from any user)
-                pendingCount = requests.filter(r => r.status === 'pending').length;
+                // For admins: get all pending requests (from any user)
+                pendingRequests = requests.filter(r => r.status === 'pending');
             } else {
-                // For regular users: count only their own pending requests
-                pendingCount = requests.filter(r => r.status === 'pending' && r.username === username).length;
+                // For regular users: get only their own pending requests
+                pendingRequests = requests.filter(r => r.status === 'pending' && r.username === username);
             }
 
-            console.log('[Requests.updateNotificationBadge] Pending count:', pendingCount, '(admin:', adminView, ')');
+            // Filter out requests that are already in the library
+            let pendingCount = 0;
+            if (window.LibraryStatus && window.LibraryStatus.check) {
+                for (const req of pendingRequests) {
+                    try {
+                        const inLibrary = await window.LibraryStatus.check(
+                            req.imdbId,
+                            req.tmdbId,
+                            req.itemType || 'movie',
+                            req.jellyfinId
+                        );
+                        // Only count if NOT in library
+                        if (!inLibrary) {
+                            pendingCount++;
+                        }
+                    } catch (e) {
+                        // If check fails, count the request (err on the side of showing it)
+                        pendingCount++;
+                    }
+                }
+            } else {
+                // Fallback: count all pending requests if LibraryStatus not available
+                pendingCount = pendingRequests.length;
+            }
+
+            console.log('[Requests.updateNotificationBadge] Pending count (not in library):', pendingCount, '(admin:', adminView, ')');
 
             // Show badge only if there are pending requests
             if (pendingCount > 0) {
