@@ -252,27 +252,37 @@ namespace Baklava.Api
                     }
                     else if (!string.IsNullOrEmpty(imdbId) || !string.IsNullOrEmpty(tmdbId))
                     {
-                        // Query items without type filter first, then filter manually
-                        var allItems = _libraryManager.GetItemList(new InternalItemsQuery
+                        _logger.LogInformation("[MetadataController.CheckLibraryStatus] Searching library by TMDB/IMDB ID: tmdb={Tmdb}, imdb={Imdb}",
+                            tmdbId ?? "null", imdbId ?? "null");
+
+                        // Build query with type filter to avoid deserialization errors with unknown types
+                        var query = new InternalItemsQuery
                         {
                             Recursive = true
-                        });
+                        };
+
+                        // Filter by type at the query level to prevent Jellyfin from trying to deserialize unknown types
+                        if (itemType == "series")
+                        {
+                            query.IncludeItemTypes = new[] { "Series" };
+                        }
+                        else if (itemType == "movie")
+                        {
+                            query.IncludeItemTypes = new[] { "Movie" };
+                        }
+
+                        var allItems = _libraryManager.GetItemList(query);
 
                         inLibrary = allItems.Where(item =>
                         {
-                            // Filter by type
-                            var itemTypeName = item.GetType().Name;
-                            if (itemType == "series" && itemTypeName != "Series") return false;
-                            if (itemType == "movie" && itemTypeName != "Movie") return false;
-                            
                             var providerIds = item.ProviderIds;
                             if (providerIds == null) return false;
-                            
+
                             if (imdbId != null && providerIds.TryGetValue("Imdb", out var itemImdb) && itemImdb == imdbId)
                                 return true;
                             if (tmdbId != null && providerIds.TryGetValue("Tmdb", out var itemTmdb) && itemTmdb == tmdbId)
                                 return true;
-                                
+
                             return false;
                         }).Any();
                     }
