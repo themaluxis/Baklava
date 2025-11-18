@@ -198,9 +198,9 @@ namespace Baklava.Api
             [FromQuery] string itemType,
             [FromQuery] string? jellyfinId)
         {
-            _logger.LogInformation("[MetadataController.CheckLibraryStatus] Called with: imdbId={ImdbId}, tmdbId={TmdbId}, itemType={ItemType}, jellyfinId={JellyfinId}",
+            _logger.LogDebug("[MetadataController.CheckLibraryStatus] Called with: imdbId={ImdbId}, tmdbId={TmdbId}, itemType={ItemType}, jellyfinId={JellyfinId}",
                 imdbId ?? "null", tmdbId ?? "null", itemType ?? "null", jellyfinId ?? "null");
-            
+
             // Check inputs and proceed
             try
             {
@@ -216,7 +216,7 @@ namespace Baklava.Api
                 var inLibrary = false;
                 string? foundImdbId = imdbId;
                 string? foundTmdbId = tmdbId;
-                
+
                 try
                 {
                     // If a direct Jellyfin item id is provided, prefer that fast path
@@ -230,24 +230,24 @@ namespace Baklava.Api
                             if ((itemType == "series" && itemTypeName == "Series") || (itemType == "movie" && itemTypeName == "Movie") || string.IsNullOrEmpty(itemType))
                             {
                                 inLibrary = true;
-                                
-                                _logger.LogInformation("[MetadataController.CheckLibraryStatus] Found item in library by JellyfinId: {Id}, type: {Type}",
+
+                                _logger.LogDebug("[MetadataController.CheckLibraryStatus] Found item in library by JellyfinId: {Id}, type: {Type}",
                                     jellyfinId, itemTypeName);
-                                
+
                                 // Extract provider IDs for request checking
                                 if (itemById.ProviderIds != null)
                                 {
                                     itemById.ProviderIds.TryGetValue("Imdb", out foundImdbId);
                                     itemById.ProviderIds.TryGetValue("Tmdb", out foundTmdbId);
-                                    
-                                    _logger.LogInformation("[MetadataController.CheckLibraryStatus] Extracted provider IDs: imdb={Imdb}, tmdb={Tmdb}",
+
+                                    _logger.LogDebug("[MetadataController.CheckLibraryStatus] Extracted provider IDs: imdb={Imdb}, tmdb={Tmdb}",
                                         foundImdbId ?? "null", foundTmdbId ?? "null");
                                 }
                             }
                         }
                         else
                         {
-                            _logger.LogInformation("[MetadataController.CheckLibraryStatus] JellyfinId {Id} not found in library - item may have been deleted, falling back to TMDB/IMDB check",
+                            _logger.LogDebug("[MetadataController.CheckLibraryStatus] JellyfinId {Id} not found in library - item may have been deleted, falling back to TMDB/IMDB check",
                                 jellyfinId);
                         }
                     }
@@ -255,7 +255,7 @@ namespace Baklava.Api
                     // If not found by JellyfinId (or no JellyfinId provided), search by TMDB/IMDB ID
                     if (!inLibrary && (!string.IsNullOrEmpty(imdbId) || !string.IsNullOrEmpty(tmdbId)))
                     {
-                        _logger.LogInformation("[MetadataController.CheckLibraryStatus] Searching library by TMDB/IMDB ID: tmdb={Tmdb}, imdb={Imdb}",
+                        _logger.LogDebug("[MetadataController.CheckLibraryStatus] Searching library by TMDB/IMDB ID: tmdb={Tmdb}, imdb={Imdb}",
                             tmdbId ?? "null", imdbId ?? "null");
 
                         // Build query with type filter to avoid deserialization errors with unknown types
@@ -292,7 +292,7 @@ namespace Baklava.Api
                         if (foundItem != null)
                         {
                             inLibrary = true;
-                            _logger.LogInformation("[MetadataController.CheckLibraryStatus] Found item in library by TMDB/IMDB ID");
+                            _logger.LogDebug("[MetadataController.CheckLibraryStatus] Found item in library by TMDB/IMDB ID");
 
                             // Extract provider IDs from found item (may fill in missing IDs)
                             if (foundItem.ProviderIds != null)
@@ -302,7 +302,7 @@ namespace Baklava.Api
                                 if (string.IsNullOrEmpty(foundTmdbId))
                                     foundItem.ProviderIds.TryGetValue("Tmdb", out foundTmdbId);
 
-                                _logger.LogInformation("[MetadataController.CheckLibraryStatus] Extracted provider IDs: imdb={Imdb}, tmdb={Tmdb}",
+                                _logger.LogDebug("[MetadataController.CheckLibraryStatus] Extracted provider IDs: imdb={Imdb}, tmdb={Tmdb}",
                                     foundImdbId ?? "null", foundTmdbId ?? "null");
                             }
                         }
@@ -317,31 +317,27 @@ namespace Baklava.Api
                                 // Check if requested using the found IDs (use foundImdbId/foundTmdbId if we extracted them from Jellyfin item)
                 var config = Plugin.Instance?.Configuration;
                 var requests = config?.Requests ?? new List<MediaRequest>();
-                
-                _logger.LogInformation("[MetadataController.CheckLibraryStatus] Checking {Count} requests with foundImdbId={FoundImdb}, foundTmdbId={FoundTmdb}, jellyfinId={JfId}, inLibrary={InLib}",
+
+                _logger.LogDebug("[MetadataController.CheckLibraryStatus] Checking {Count} requests with foundImdbId={FoundImdb}, foundTmdbId={FoundTmdb}, jellyfinId={JfId}, inLibrary={InLib}",
                     requests.Count, foundImdbId ?? "null", foundTmdbId ?? "null", jellyfinId ?? "null", inLibrary);
-                
+
                 // Match by TMDB/IMDB ID first (more reliable), then by JellyfinId ONLY if item is still in library
                 var existingRequest = requests.FirstOrDefault(r =>
                     r.ItemType == itemType &&
                     (
                         // Prefer matching by TMDB/IMDB IDs (these are stable even if item is deleted/re-added)
-                        ((foundImdbId != null && !string.IsNullOrEmpty(r.ImdbId) && r.ImdbId == foundImdbId) || 
+                        ((foundImdbId != null && !string.IsNullOrEmpty(r.ImdbId) && r.ImdbId == foundImdbId) ||
                          (foundTmdbId != null && !string.IsNullOrEmpty(r.TmdbId) && r.TmdbId == foundTmdbId)) ||
                         // Only match by JellyfinId if the item is currently in the library
                         // (prevents false matches when item was deleted but request still has old JellyfinId)
                         (inLibrary && !string.IsNullOrEmpty(jellyfinId) && !string.IsNullOrEmpty(r.JellyfinId) && r.JellyfinId == jellyfinId)
                     )
                 );
-                
+
                 if (existingRequest != null)
                 {
-                    _logger.LogInformation("[MetadataController.CheckLibraryStatus] Found existing request: id={Id}, status={Status}, imdbId={Imdb}, tmdbId={Tmdb}",
+                    _logger.LogDebug("[MetadataController.CheckLibraryStatus] Found existing request: id={Id}, status={Status}, imdbId={Imdb}, tmdbId={Tmdb}",
                         existingRequest.Id, existingRequest.Status, existingRequest.ImdbId ?? "null", existingRequest.TmdbId ?? "null");
-                }
-                else
-                {
-                    _logger.LogInformation("[MetadataController.CheckLibraryStatus] No existing request found");
                 }
 
                 // Look up the actual username from userId if request exists
@@ -361,7 +357,7 @@ namespace Baklava.Api
                     }
                 }
 
-                _logger.LogInformation("[MetadataController.CheckLibraryStatus] Returning: inLibrary={InLib}, hasRequest={HasReq}",
+                _logger.LogDebug("[MetadataController.CheckLibraryStatus] Returning: inLibrary={InLib}, hasRequest={HasReq}",
                     inLibrary, existingRequest != null);
 
                 return Ok(new

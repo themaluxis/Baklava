@@ -24,8 +24,8 @@ namespace Baklava.Api
         [HttpGet]
         public ActionResult<List<MediaRequest>> GetRequests()
         {
-            _logger.LogInformation("[RequestsController] GET called");
-            
+            _logger.LogDebug("[RequestsController] GET called");
+
             var config = Plugin.Instance?.Configuration;
             if (config == null)
             {
@@ -34,15 +34,8 @@ namespace Baklava.Api
             }
 
             var requests = config.Requests ?? new List<MediaRequest>();
-            _logger.LogInformation($"[RequestsController] Returning {requests.Count} requests");
-            
-            // Log first request details for debugging
-            if (requests.Count > 0)
-            {
-                var first = requests[0];
-                _logger.LogInformation($"[RequestsController] First request - Id: {first.Id}, Username: {first.Username}, Title: {first.Title}, Status: {first.Status}");
-            }
-            
+            _logger.LogDebug($"[RequestsController] Returning {requests.Count} requests");
+
             return Ok(requests);
         }
 
